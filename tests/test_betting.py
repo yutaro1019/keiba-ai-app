@@ -178,15 +178,15 @@ class BettingFlowTests(unittest.TestCase):
         self.assertTrue(all(b["bet"] % 100 == 0 for b in bets))
         self.assertTrue(all(b["ev"] >= 1.0 for b in bets))
 
-    def test_hit_hybrid_includes_win_place_candidates(self):
+    def test_hit_hybrid_uses_roi_oriented_candidates(self):
         result = betting.suggest(sample_predictions(), budget=3000, style="hybrid_hit")
         kinds = {b["ticket_kind"] for b in result["bets"]}
 
         self.assertTrue(result["bets"])
         self.assertLessEqual(result["total_bet"], 3000)
         self.assertTrue(all(b["bet"] % 100 == 0 for b in result["bets"]))
-        self.assertIn("tansho", kinds)
-        self.assertIn("fukusho", kinds)
+        self.assertIn("wide", kinds)
+        self.assertIn("sanrenpuku", kinds)
 
     def test_allocate_budget_strict_ev_can_skip_bad_candidates(self):
         cands = [
