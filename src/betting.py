@@ -233,7 +233,7 @@ STYLE_CONFIG = {
     },
     "hybrid": {
         "name": "⚖️ ハイブリッド",
-        "desc": "ワイドBOXで的中を拾い、EVの高い三連複へ厚く配分。三連単BOXも強い時だけ候補に入れる",
+        "desc": "自信度55以上に絞り、ワイドBOXで的中を拾いながらEVの高い三連複へ厚く配分",
         "tickets": ["wide", "sanrenpuku", "wide_box", "sanrentan_box", "sanrenpuku_box"],
         "max_combos": {"wide": 4, "sanrenpuku": 4, "wide_box": 1, "sanrentan_box": 1, "sanrenpuku_box": 1},
         "min_p": {"wide": 0.07, "sanrenpuku": 0.003, "wide_box": 0.14, "sanrentan_box": 0.006, "sanrenpuku_box": 0.010},
@@ -264,7 +264,7 @@ STYLE_CONFIG = {
             "sanrentan_box": 0.2,
             "sanrenpuku_box": 0.5,
         },
-        "default_min_confidence": 0.0,
+        "default_min_confidence": 55.0,
         "strict_ev": True,
         "seed_each_kind": True,
         "min_tickets": 2,
