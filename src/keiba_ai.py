@@ -25,7 +25,7 @@ from predictor import KeibaPredictor, load_race_from_data, list_recent_races, DA
 from betting import suggest, format_suggestion, rank_predictions, STYLE_CONFIG
 
 
-PUBLIC_STYLE_KEYS = ("hybrid", "roi_focus", "hit_focus")
+PUBLIC_STYLE_KEYS = ("hybrid", "hybrid_hit", "roi_focus", "hit_focus")
 DEFAULT_STYLE = "hybrid"
 
 
@@ -343,11 +343,12 @@ def betting_loop(pred: pd.DataFrame):
         print("\n" + "─" * 60)
         print("💰 賭け方提案")
         print("─" * 60)
-        print("  1) ⚖️  ハイブリッド     —  ワイドBOXで拾い、三連複へ厚めに配分")
-        print("  2) 🎯  期待値重視       —  三連単系を除外し、高EV買い目を優先")
-        print("  3) 🟢  的中率重視       —  3着内率を軸にEVも見て動的に選択")
+        print("  1) ⚖️  ハイブリッド       —  ワイドBOXで拾い、三連複へ厚めに配分")
+        print("  2) ⚖️  的中ハイブリッド   —  単勝・複勝も入れて買い目的中率を上げる")
+        print("  3) 🎯  期待値重視         —  三連単系を除外し、高EV買い目を優先")
+        print("  4) 🟢  的中率重視         —  3着内率を軸にEVも見て動的に選択")
         print("  0) 終了")
-        choice = ask("\n選択", default="1", choices=["0", "1", "2", "3"])
+        choice = ask("\n選択", default="1", choices=["0", "1", "2", "3", "4"])
         if choice == "0":
             break
         budget_str = ask("予算(円)", default="3000")
@@ -360,7 +361,7 @@ def betting_loop(pred: pd.DataFrame):
             print("⚠️  予算は100円以上にしてください")
             continue
 
-        style_map = {"1": "hybrid", "2": "roi_focus", "3": "hit_focus"}
+        style_map = {"1": "hybrid", "2": "hybrid_hit", "3": "roi_focus", "4": "hit_focus"}
         style = style_map[choice]
         result = suggest(pred, budget=budget, style=style)
         print(format_suggestion(result))

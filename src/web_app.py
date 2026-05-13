@@ -36,7 +36,7 @@ app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
 app.json.ensure_ascii = False
 _predictor: KeibaPredictor | None = None
-VISIBLE_STYLE_KEYS = ("hybrid", "roi_focus", "hit_focus")
+VISIBLE_STYLE_KEYS = ("hybrid", "hybrid_hit", "roi_focus", "hit_focus")
 VISIBLE_STYLE_CONFIG = {key: STYLE_CONFIG[key] for key in VISIBLE_STYLE_KEYS}
 DEFAULT_STYLE = "hybrid"
 VENUE_OPTIONS = [(code, name) for code, name in sorted(VENUE_NAMES.items(), key=lambda item: int(item[0]))]
