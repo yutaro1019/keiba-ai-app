@@ -1,0 +1,35 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test and coverage outputs
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Local runtime logs
+*.log
+logs/
+
+# Scraped/generated race data. Do not commit these.
+data/
+*.pkl
+*.pkl.gz
+*.csv
+
+# Trained artifacts and backups
+models/
+models_backup*/
+
+# Local environment files
+.env
+.venv/
+venv/
+env/
+
+# Editor and OS files
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
