@@ -292,7 +292,7 @@ STYLE_CONFIG = {
     },
     "hybrid_hit": {
         "name": "⚖️ 的中ハイブリッド",
-        "desc": "単勝・複勝も候補に入れ、複勝とワイドを厚めにしながらEVのある三連複も拾う",
+        "desc": "予想1位・2位の複勝とワイドを土台にして、当たった時に元を取りやすい配分にする",
         "tickets": ["tansho", "fukusho", "wide", "sanrenpuku", "wide_box", "sanrenpuku_box"],
         "max_combos": {
             "tansho": 2,
@@ -342,7 +342,15 @@ STYLE_CONFIG = {
         "rank_top_extra": {"horse_dist_top3_rate": 0.04},
         "rank_rest_extra": {"horse_top3_rate": 0.02},
         "selection_key": "balanced",
-        "stake_mode": "kind_weight",
+        "stake_mode": "rank_plan",
+        "rank_plan": [
+            {"ticket_kind": "wide", "ranks": [1, 2], "weight": 3.2},
+            {"ticket_kind": "fukusho", "ranks": [1], "weight": 2.0},
+            {"ticket_kind": "fukusho", "ranks": [2], "weight": 2.0},
+            {"ticket_kind": "tansho", "ranks": [1], "weight": 0.9},
+            {"ticket_kind": "wide", "ranks": [1, 3], "weight": 1.0},
+            {"ticket_kind": "sanrenpuku", "ranks": [1, 2, 3], "weight": 0.9},
+        ],
         "kind_weights": {
             "tansho": 1.1,
             "fukusho": 4.0,
@@ -351,7 +359,7 @@ STYLE_CONFIG = {
             "wide_box": 2.0,
             "sanrenpuku_box": 0.9,
         },
-        "default_min_confidence": 0.0,
+        "default_min_confidence": 40.0,
         "strict_ev": True,
         "seed_each_kind": True,
         "min_tickets": 3,
