@@ -188,6 +188,28 @@ class BettingFlowTests(unittest.TestCase):
         self.assertIn("wide", kinds)
         self.assertIn("sanrenpuku", kinds)
 
+    def test_roi_focus_uses_trio_and_trifecta(self):
+        pred = pd.DataFrame(
+            [
+                {"horse_no": 1, "p_win": 0.45, "p_top3": 0.90, "odds": 20.0, "pred_rank": 1},
+                {"horse_no": 2, "p_win": 0.25, "p_top3": 0.80, "odds": 20.0, "pred_rank": 2},
+                {"horse_no": 3, "p_win": 0.20, "p_top3": 0.75, "odds": 20.0, "pred_rank": 3},
+                {"horse_no": 4, "p_win": 0.05, "p_top3": 0.25, "odds": 20.0, "pred_rank": 4},
+                {"horse_no": 5, "p_win": 0.03, "p_top3": 0.20, "odds": 20.0, "pred_rank": 5},
+            ]
+        )
+
+        result = betting.suggest(pred, budget=3000, style="roi_focus")
+        kinds = {b["ticket_kind"] for b in result["bets"]}
+
+        self.assertEqual(len(result["bets"]), 2)
+        self.assertEqual(kinds, {"sanrenpuku", "sanrentan"})
+        self.assertEqual(result["total_bet"], 3000)
+        self.assertGreater(
+            sum(b["bet"] for b in result["bets"] if b["ticket_kind"] == "sanrentan"),
+            sum(b["bet"] for b in result["bets"] if b["ticket_kind"] == "sanrenpuku"),
+        )
+
     def test_allocate_budget_strict_ev_can_skip_bad_candidates(self):
         cands = [
             {"ticket_kind": "tansho", "p_hit": 0.1, "odds_est": 2.0, "ev": 0.2, "bet": 0, "horses": [1]},
@@ -195,7 +217,7 @@ class BettingFlowTests(unittest.TestCase):
 
         self.assertEqual(betting.allocate_budget(cands, 1000, "maxroi"), [])
 
-    def test_rank_predictions_uses_win_for_top_and_top3_for_rest(self):
+    def test_rank_predictions_uses_blended_win_and_top3_score(self):
         df = pd.DataFrame(
             [
                 {"race_id": 10, "horse_no": 4, "p_win": 0.10, "p_top3": 0.80, "pred_rank": 1},
@@ -207,9 +229,9 @@ class BettingFlowTests(unittest.TestCase):
 
         ranked = betting.rank_predictions(df, "hybrid")
 
-        self.assertEqual(ranked.loc[0, "horse_no"], 1)
+        self.assertEqual(ranked.loc[0, "horse_no"], 4)
         self.assertEqual(ranked.loc[0, "pred_rank"], 1)
-        self.assertEqual(ranked.loc[2, "horse_no"], 3)
+        self.assertEqual(ranked.loc[2, "horse_no"], 2)
         self.assertEqual(ranked.loc[2, "pred_rank"], 1)
 
     def test_suggest_and_format_have_consistent_totals(self):
