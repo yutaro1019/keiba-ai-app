@@ -592,7 +592,7 @@ def prediction_payload_from_race(race, budget: int, style: str, model_variant: s
                 for _, row in pred.iterrows()
                 if pd.notna(row.get("horse_no"))
             ]
-            kelly_bankroll = budget if style == "kelly_ai" else 100_000
+            kelly_bankroll = budget
             kelly_bets = predictor(model_variant).recommend_bets(
                 race.rows,
                 {"tansho": tansho_entries},
