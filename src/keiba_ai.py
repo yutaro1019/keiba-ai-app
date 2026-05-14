@@ -21,12 +21,12 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from predictor import KeibaPredictor, load_race_from_data, list_recent_races, DATA_PKL
+from predictor import KeibaPredictor, load_race_from_data, list_recent_races, DATA_PKL, MODEL_VARIANTS, DEFAULT_MODEL_VARIANT
 from betting import suggest, format_suggestion, rank_predictions, STYLE_CONFIG
 
 
-PUBLIC_STYLE_KEYS = ("hybrid", "hybrid_hit", "roi_focus", "hit_focus")
-DEFAULT_STYLE = "hybrid"
+PUBLIC_STYLE_KEYS = ("smart", "hybrid", "roi_focus", "hit_focus")
+DEFAULT_STYLE = "smart"
 
 
 VENUE_NAMES = {
@@ -343,10 +343,10 @@ def betting_loop(pred: pd.DataFrame):
         print("\n" + "─" * 60)
         print("💰 賭け方提案")
         print("─" * 60)
-        print("  1) ⚖️  ハイブリッド       —  ワイドBOXで拾い、三連複へ厚めに配分")
-        print("  2) ⚖️  的中ハイブリッド   —  単勝・複勝も入れて買い目的中率を上げる")
-        print("  3) 🎯  期待値重視         —  三連単を厚く、三連複も保険で押さえる")
-        print("  4) 🟢  的中率重視         —  3着内率を軸にEVも見て動的に選択")
+        print("  1) 🧠  自動選択   —  自信度45点以上のレースのみ自動選択(HIGH→ROI重視/MID→バランス)")
+        print("  2) ⚖️  ハイブリッド —  単勝・複勝・ワイドをEV重視で組み合わせ")
+        print("  3) 🎯  期待値重視  —  三連単系を除外し、高EV買い目を優先")
+        print("  4) 🟢  的中率重視  —  3着内率を軸にEVも見て動的に選択")
         print("  0) 終了")
         choice = ask("\n選択", default="1", choices=["0", "1", "2", "3", "4"])
         if choice == "0":
@@ -361,9 +361,12 @@ def betting_loop(pred: pd.DataFrame):
             print("⚠️  予算は100円以上にしてください")
             continue
 
-        style_map = {"1": "hybrid", "2": "hybrid_hit", "3": "roi_focus", "4": "hit_focus"}
+        style_map = {"1": "smart", "2": "hybrid", "3": "roi_focus", "4": "hit_focus"}
         style = style_map[choice]
         result = suggest(pred, budget=budget, style=style)
+        if result.get("chosen_style"):
+            conf = result.get("confidence", 0.0)
+            print(f"\n  → 自信度 {conf:.1f}点 → {result['style']}")
         print(format_suggestion(result))
 
         again = ask("別のスタイル/予算で再提案しますか? (y/n)", default="n")
@@ -637,6 +640,7 @@ def main():
     parser.add_argument("--fetch-odds", action="store_true", help="Fetch all available JRA odds tables for races in --year")
     parser.add_argument("--force", action="store_true", help="Overwrite cached payout/odds files when fetching market data")
     parser.add_argument("--sleep-seconds", type=float, default=0.25, help="Delay between market-data requests")
+    parser.add_argument("--model-variant", default=DEFAULT_MODEL_VARIANT, choices=MODEL_VARIANTS.keys(), help="Prediction model variant")
     parser.add_argument("--no-banner", action="store_true")
     args = parser.parse_args()
 
@@ -673,8 +677,10 @@ def main():
         return
 
     print("⚙️  モデル読込中...", flush=True)
-    predictor = KeibaPredictor()
+    predictor = KeibaPredictor(model_variant=args.model_variant)
     metrics = predictor.meta.get("metrics", {})
+    variant_label = MODEL_VARIANTS.get(args.model_variant, {}).get("label", args.model_variant)
+    print(f"   ✓ モデル種別: {variant_label}")
     print(f"   ✓ TOP3アンサンブル AUC: {metrics.get('ens_top3_auc', 0):.4f}")
     print(f"   ✓ WIN  アンサンブル AUC: {metrics.get('ens_win_auc', 0):.4f}")
     print(f"   ✓ 特徴量: {len(predictor.feats)}個 (血統・履歴・コース適性 含む)")

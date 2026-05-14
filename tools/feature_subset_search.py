@@ -117,7 +117,7 @@ def ranking_metrics(valid_meta, p_top3_raw, p_win_raw, win_weight=0.40):
     }
 
 
-def evaluate_subset(df, features, rounds, save_dir=None, cat_meta=None):
+def evaluate_subset(df, features, rounds, save_dir=None, cat_meta=None, win_weights=None):
     tr = df[df["__year"] < 2025].reset_index(drop=True)
     va = df[df["__year"] == 2025].reset_index(drop=True)
     cat_feats = [c for c in CATEGORICAL_FEATS if c in features]
@@ -159,7 +159,21 @@ def evaluate_subset(df, features, rounds, save_dir=None, cat_meta=None):
     p_top3 = np.mean(top3_preds, axis=0)
     p_win = np.mean(win_preds, axis=0)
     valid_meta = va[["race_id", "horse_no", "rank"]].copy()
-    rank = ranking_metrics(valid_meta, p_top3, p_win)
+    win_weights = win_weights or [0.6]
+    rank_candidates = [
+        {"score_win_weight": float(w), **ranking_metrics(valid_meta, p_top3, p_win, win_weight=float(w))}
+        for w in win_weights
+    ]
+    rank = max(
+        rank_candidates,
+        key=lambda r: (
+            r["top1_win_rate"] >= 30.0,
+            r["top1_top3_rate"] >= 60.0,
+            r["top1_win_rate"],
+            r["top1_top3_rate"],
+            r["top3_avg"],
+        ),
+    )
     result = {
         "features": len(features),
         "ens_top3_auc": float(roc_auc_score(y_va_top3, p_top3)),
@@ -185,7 +199,9 @@ def evaluate_subset(df, features, rounds, save_dir=None, cat_meta=None):
             "categorical": cat_feats,
             "cat_categories": cat_meta or {},
             "metrics": metrics,
+            "score_win_weight": rank["score_win_weight"],
             "ranking_metrics": rank,
+            "ranking_metrics_by_score_weight": rank_candidates,
             "ensemble_top3": ["lgb_top3_s42.txt", "lgb_top3_s7.txt", "lgb_top3_s2024.txt"],
             "ensemble_win": ["lgb_win_s42.txt", "lgb_win_s7.txt"],
         }
@@ -202,6 +218,7 @@ def main():
     parser.add_argument("--exclude-market", action="store_true", help="Do not use odds/popularity as model features")
     parser.add_argument("--save-size", type=int, default=None, help="Save this feature count as a model directory")
     parser.add_argument("--save-dir", default=None, help="Directory for --save-size model")
+    parser.add_argument("--win-weights", default="0.3,0.4,0.5,0.6,0.7", help="Score weights to test for p_win")
     args = parser.parse_args()
 
     model_dir = Path(args.model_dir)
@@ -210,6 +227,7 @@ def main():
         ranked_features = [f for f in ranked_features if f not in set(MARKET_FEATS)]
     sizes = [int(x.strip()) for x in args.sizes.split(",") if x.strip()]
     sizes = [min(s, len(ranked_features)) for s in sizes]
+    win_weights = [float(x.strip()) for x in args.win_weights.split(",") if x.strip()]
 
     print(f"model_dir={model_dir}")
     print(f"exclude_market={args.exclude_market}")
@@ -221,11 +239,12 @@ def main():
         features = ranked_features[:size]
         print(f"\n=== feature subset: top {size} ===", flush=True)
         save_dir = args.save_dir if args.save_size == size else None
-        result = evaluate_subset(df, features, args.rounds, save_dir=save_dir, cat_meta=cat_meta)
+        result = evaluate_subset(df, features, args.rounds, save_dir=save_dir, cat_meta=cat_meta, win_weights=win_weights)
         result["feature_names"] = features
         results.append(result)
         print(
             f"top3_auc={result['ens_top3_auc']:.4f} win_auc={result['ens_win_auc']:.4f} "
+            f"score_w={result['score_win_weight']:.2f} "
             f"top1_win={result['top1_win_rate']:.1f}% top1_top3={result['top1_top3_rate']:.1f}% "
             f"top3_rate={result['top3_hit_rate']:.1f}% avg={result['top3_avg']:.2f}"
         )
@@ -237,6 +256,7 @@ def main():
     for r in sorted(results, key=lambda x: (x["top1_win_rate"], x["top1_top3_rate"], x["top3_avg"]), reverse=True):
         print(
             f"{r['features']:>3} features | TOP3 AUC {r['ens_top3_auc']:.4f} | WIN AUC {r['ens_win_auc']:.4f} | "
+            f"score_w {r['score_win_weight']:.2f} | "
             f"1着 {r['top1_win_rate']:.1f}% | 3着内 {r['top1_top3_rate']:.1f}% | "
             f"上位3頭 {r['top3_hit_rate']:.1f}% | 平均 {r['top3_avg']:.2f}"
         )

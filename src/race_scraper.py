@@ -591,6 +591,32 @@ def _popularity_items_from_cell(cell) -> List[int]:
     return [int(m) for m in re.findall(r"(\d+)\s*人気", text)]
 
 
+def parse_lap_times_from_soup(soup: BeautifulSoup) -> Dict[str, float]:
+    """
+    レース結果ページから ラップタイム を解析し、
+    race_front_pace / race_back_pace / race_pace_diff を返す。
+    取得できない場合は空 dict を返す。
+    """
+    table = soup.select_one("table.Race_HaronTime")
+    if table is None:
+        return {}
+    lap_vals = []
+    for td in table.find_all("td"):
+        txt = _text(td).strip()
+        m = re.match(r"^(\d+\.\d+)$", txt)
+        if m:
+            lap_vals.append(float(m.group(1)))
+    if len(lap_vals) < 3:
+        return {}
+    front = float(np.mean(lap_vals[:3]))
+    back  = float(np.mean(lap_vals[-3:]))
+    return {
+        "race_front_pace": round(front, 3),
+        "race_back_pace":  round(back,  3),
+        "race_pace_diff":  round(back - front, 3),
+    }
+
+
 def parse_netkeiba_payouts(soup: BeautifulSoup, race_id: int) -> Dict[str, Any]:
     payouts: Dict[str, List[Dict[str, Any]]] = {}
     for table in soup.find_all("table"):
@@ -1036,6 +1062,7 @@ def parse_netkeiba_entries(soup: BeautifulSoup, race_id: int, meta: Dict[str, An
 
 
 def parse_netkeiba_result_entries(soup: BeautifulSoup, race_id: int, meta: Dict[str, Any]) -> pd.DataFrame:
+    lap_pace = parse_lap_times_from_soup(soup)
     table = soup.select_one("table.RaceTable01")
     if table is None:
         raise ValueError("結果テーブルを取得できませんでした。")
@@ -1086,6 +1113,9 @@ def parse_netkeiba_result_entries(soup: BeautifulSoup, race_id: int, meta: Dict[
             "date": pd.to_datetime(meta.get("date"), errors="coerce"),
             "venue": str(meta.get("venue", str(race_id)[4:6])),
             "馬名": horse_name,
+            "race_front_pace": lap_pace.get("race_front_pace", np.nan),
+            "race_back_pace":  lap_pace.get("race_back_pace",  np.nan),
+            "race_pace_diff":  lap_pace.get("race_pace_diff",  np.nan),
         })
 
     if not rows:
@@ -1662,6 +1692,7 @@ def auto_update_missing(
     end_date: Optional[str] = None,
     limit: Optional[int] = 0,
     skip_cached: bool = True,
+    refresh_lookups: bool = True,
     progress: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """
@@ -1795,6 +1826,39 @@ def auto_update_missing(
             total=1,
             message=f"学習データ保存完了: {dataset_update.get('races_added', 0)}R / {dataset_update.get('rows_added', 0)}行追加",
         )
+    lookup_update = {
+        "updated": False,
+        "reason": "学習データの追加がないため未実行",
+    }
+    if refresh_lookups and dataset_update.get("rows_added", 0):
+        _emit_progress(
+            progress,
+            phase="lookup",
+            current=0,
+            total=10,
+            message="オッズ・人気なしモデル用 lookup を更新します",
+        )
+        try:
+            from no_market_v4_lookups import regenerate_v4_lookups
+            lookup_update = regenerate_v4_lookups(progress=progress)
+        except Exception as exc:
+            lookup_update = {
+                "updated": False,
+                "reason": "lookup 更新に失敗",
+                "error": str(exc),
+            }
+            _emit_progress(
+                progress,
+                phase="lookup",
+                current=10,
+                total=10,
+                message=f"lookup 更新に失敗: {exc}",
+            )
+    elif not refresh_lookups:
+        lookup_update = {
+            "updated": False,
+            "reason": "refresh_lookups=False",
+        }
     _emit_progress(
         progress,
         phase="done",
@@ -1820,6 +1884,8 @@ def auto_update_missing(
         "saved_path": dataset_update.get("saved_path", DATA_PKL),
         "latest_date": dataset_update.get("latest_date", latest_date.isoformat() if latest_date else ""),
         "total_rows": dataset_update.get("total_rows"),
+        "lookup_updated": bool(lookup_update.get("updated")),
+        "lookup_update": lookup_update,
         "stopped_by_limit": stopped_by_limit,
         "limit": max_updates,
         "date_results": date_results,

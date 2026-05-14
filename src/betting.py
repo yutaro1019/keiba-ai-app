@@ -119,7 +119,10 @@ STYLE_CONFIG = {
             "tansho": 2.00, "fukusho": 2.00,
         },
         "max_pred_rank_by_kind": {"tansho": 1, "fukusho": 3},
-        "rank_win_weight": 0.40,
+        "rank_win_weight": 0.60,
+        "rank_mode": "top1_win_fill_top3",
+        "rank_top_extra": {"horse_dist_top3_rate": 0.04},
+        "rank_rest_extra": {"horse_top3_rate": 0.02},
         "stake_mode": "equal",
         "default_min_confidence": 0.0,
         "strict_ev": True,
@@ -155,7 +158,10 @@ STYLE_CONFIG = {
             "wide": 4, "sanrenpuku": 5,
             "wide_box": 4, "sanrenpuku_box": 4,
         },
-        "rank_win_weight": 0.40,
+        "rank_win_weight": 0.60,
+        "rank_mode": "top1_win_fill_top3",
+        "rank_top_extra": {"horse_dist_top3_rate": 0.04},
+        "rank_rest_extra": {"horse_top3_rate": 0.02},
         "stake_mode": "kind_weight",
         "kind_weights": {
             "wide": 2.8, "sanrenpuku": 2.0,
@@ -179,7 +185,10 @@ STYLE_CONFIG = {
         "min_ev": 1.20,
         "min_ev_by_kind": {"sanrentan": 1.20},
         "max_pred_rank_by_kind": {"sanrentan": 5},
-        "rank_win_weight": 0.40,
+        "rank_win_weight": 0.60,
+        "rank_mode": "top1_win_fill_top3",
+        "rank_top_extra": {"horse_dist_top3_rate": 0.04},
+        "rank_rest_extra": {"horse_top3_rate": 0.02},
         "stake_mode": "top1",
         "default_min_confidence": 0.0,
         "strict_ev": True,
@@ -190,24 +199,27 @@ STYLE_CONFIG = {
     },
     "roi_focus": {
         "name": "🎯 期待値重視",
-        "desc": "的中率より回収率を優先し、三連単を厚くしつつ三連複も保険で押さえる",
-        "tickets": ["sanrenpuku", "sanrentan"],
-        "max_combos": {"sanrenpuku": 20, "sanrentan": 99},
-        "min_p": {"sanrenpuku": 0.0, "sanrentan": 0.0},
+        "desc": "単勝・複勝・ワイドだけでEVを計算。三連系や馬連の高配当外れ値は除外",
+        "tickets": ["tansho", "fukusho", "wide"],
+        "max_combos": {"tansho": 2, "fukusho": 2, "wide": 4},
+        "min_p": {"tansho": 0.07, "fukusho": 0.24, "wide": 0.12},
         "kelly_frac": 0.30,
-        "min_ev": 1.20,
-        "min_ev_by_kind": {"sanrenpuku": 1.10, "sanrentan": 1.20},
-        "max_pred_rank_by_kind": {"sanrenpuku": 5, "sanrentan": 5},
-        "rank_win_weight": 0.40,
+        "min_ev": 1.00,
+        "min_ev_by_kind": {"tansho": 1.00, "fukusho": 0.95, "wide": 0.98},
+        "max_odds_by_kind": {"tansho": 18.0, "fukusho": 7.0, "wide": 18.0},
+        "max_pred_rank_by_kind": {"tansho": 4, "fukusho": 6, "wide": 5},
+        "rank_win_weight": 0.60,
+        "rank_mode": "top1_win_fill_top3",
+        "rank_top_extra": {"horse_dist_top3_rate": 0.04},
+        "rank_rest_extra": {"horse_top3_rate": 0.02},
         "stake_mode": "kind_weight",
-        "kind_weights": {"sanrenpuku": 0.12, "sanrentan": 4.0},
+        "kind_weights": {"tansho": 1.1, "fukusho": 1.8, "wide": 2.8},
         "default_min_confidence": 0.0,
         "strict_ev": True,
-        "seed_each_kind": True,
         "min_tickets": 1,
         "min_kinds": 0,
-        "max_total_tickets": 2,
-        "max_total_points": 2,
+        "max_total_tickets": 5,
+        "max_total_points": 8,
     },
     "hit_focus": {
         "name": "🟢 的中率重視",
@@ -220,7 +232,10 @@ STYLE_CONFIG = {
         "min_ev_by_kind": {"fukusho": 0.70, "wide": 0.80},
         "max_odds_by_kind": {"fukusho": 7.0, "wide": 18.0},
         "max_pred_rank_by_kind": {"fukusho": 6, "wide": 5},
-        "rank_win_weight": 0.40,
+        "rank_win_weight": 0.60,
+        "rank_mode": "top1_win_fill_top3",
+        "rank_top_extra": {"horse_dist_top3_rate": 0.04},
+        "rank_rest_extra": {"horse_top3_rate": 0.02},
         "selection_key": "p_hit",
         "stake_mode": "kind_weight",
         "kind_weights": {"fukusho": 4.0, "wide": 1.4},
@@ -233,85 +248,37 @@ STYLE_CONFIG = {
     },
     "hybrid": {
         "name": "⚖️ ハイブリッド",
-        "desc": "自信度55以上に絞り、ワイドBOXで的中を拾いながらEVの高い三連複へ厚く配分",
-        "tickets": ["wide", "sanrenpuku", "wide_box", "sanrentan_box", "sanrenpuku_box"],
-        "max_combos": {"wide": 4, "sanrenpuku": 4, "wide_box": 1, "sanrentan_box": 1, "sanrenpuku_box": 1},
-        "min_p": {"wide": 0.07, "sanrenpuku": 0.003, "wide_box": 0.14, "sanrentan_box": 0.006, "sanrenpuku_box": 0.010},
+        "desc": "自信度70以上に絞り、単勝・複勝・ワイドから実オッズ込みの期待値で動的に選択。的中率を残しつつ回収率100%超えを狙う",
+        "tickets": ["tansho", "fukusho", "wide"],
+        "max_combos": {"tansho": 2, "fukusho": 2, "wide": 4},
+        "min_p": {"tansho": 0.07, "fukusho": 0.24, "wide": 0.12},
         "kelly_frac": 0.30,
         "min_ev": 1.00,
-        "min_ev_by_kind": {
-            "wide": 1.00,
-            "sanrenpuku": 1.05,
-            "wide_box": 1.00,
-            "sanrentan_box": 1.30,
-            "sanrenpuku_box": 1.05,
-        },
-        "max_pred_rank_by_kind": {
-            "wide": 4,
-            "sanrenpuku": 5,
-            "wide_box": 4,
-            "sanrentan_box": 3,
-            "sanrenpuku_box": 4,
-        },
-        "odds_multiplier": {"wide": 2.70, "sanrenpuku": 3.80, "sanrentan_box": 1.00},
-        "rank_win_weight": 0.40,
-        "selection_key": "ev",
+        "min_ev_by_kind": {"tansho": 1.00, "fukusho": 0.95, "wide": 0.98},
+        "max_odds_by_kind": {"tansho": 18.0, "fukusho": 7.0, "wide": 18.0},
+        "max_pred_rank_by_kind": {"tansho": 4, "fukusho": 6, "wide": 5},
+        "rank_win_weight": 0.60,
+        "rank_mode": "top1_win_fill_top3",
+        "rank_top_extra": {"horse_dist_top3_rate": 0.04},
+        "rank_rest_extra": {"horse_top3_rate": 0.02},
         "stake_mode": "kind_weight",
-        "kind_weights": {
-            "wide": 0.6,
-            "sanrenpuku": 8.0,
-            "wide_box": 0.6,
-            "sanrentan_box": 0.2,
-            "sanrenpuku_box": 0.5,
-        },
-        "default_min_confidence": 55.0,
+        "kind_weights": {"tansho": 1.1, "fukusho": 1.8, "wide": 2.8},
+        "default_min_confidence": 70.0,
         "strict_ev": True,
-        "seed_each_kind": True,
-        "min_tickets": 2,
+        "min_tickets": 1,
         "min_kinds": 0,
-        "max_total_tickets": 4,
-        "max_total_points": 10,
+        "max_total_tickets": 5,
+        "max_total_points": 8,
     },
-    "hybrid_hit": {
-        "name": "⚖️ 的中ハイブリッド",
-        "desc": "オッズを見て、低配当の単勝・複勝よりワイドBOXと三連複へ厚く配分して回収率100%超えを狙う",
-        "tickets": ["wide", "sanrenpuku", "wide_box", "sanrentan_box", "sanrenpuku_box"],
-        "max_combos": {"wide": 4, "sanrenpuku": 4, "wide_box": 1, "sanrentan_box": 1, "sanrenpuku_box": 1},
-        "min_p": {"wide": 0.07, "sanrenpuku": 0.003, "wide_box": 0.14, "sanrentan_box": 0.006, "sanrenpuku_box": 0.010},
+    "smart": {
+        "name": "🧠 自動選択",
+        "desc": "自信度75点以上のレースのみ自動選択。HIGH(≥75)→ROI重視、MID→バランス。LOW(<75)はデフォルトでスキップ",
+        "_is_smart": True,
+        "tickets": [],
+        "max_combos": {},
+        "min_p": {},
         "kelly_frac": 0.30,
-        "min_ev": 1.00,
-        "min_ev_by_kind": {
-            "wide": 1.00,
-            "sanrenpuku": 1.05,
-            "wide_box": 1.00,
-            "sanrentan_box": 1.30,
-            "sanrenpuku_box": 1.05,
-        },
-        "max_pred_rank_by_kind": {
-            "wide": 4,
-            "sanrenpuku": 5,
-            "wide_box": 4,
-            "sanrentan_box": 3,
-            "sanrenpuku_box": 4,
-        },
-        "odds_multiplier": {"wide": 2.70, "sanrenpuku": 3.80, "sanrentan_box": 1.00},
-        "rank_win_weight": 0.40,
-        "selection_key": "ev",
-        "stake_mode": "kind_weight",
-        "kind_weights": {
-            "wide": 0.6,
-            "sanrenpuku": 8.0,
-            "wide_box": 0.6,
-            "sanrentan_box": 0.2,
-            "sanrenpuku_box": 0.5,
-        },
-        "default_min_confidence": 0.0,
-        "strict_ev": True,
-        "seed_each_kind": True,
-        "min_tickets": 2,
-        "min_kinds": 0,
-        "max_total_tickets": 4,
-        "max_total_points": 10,
+        "default_min_confidence": 75.0,
     },
     "fukusho_roi": {
         "name": "🟢 複勝特化・前の高回収",
@@ -1290,6 +1257,98 @@ def allocate_budget(cands: List[Dict], budget: int, style: str) -> List[Dict]:
 
 
 # =====================================================
+# 自動選択サポート
+# =====================================================
+SMART_CANDIDATES = ("roi_focus", "hit_focus")
+
+
+def _compute_confidence(pred: pd.DataFrame) -> float:
+    """自信度スコア(0-100)を計算。keiba_ai.race_confidenceと同ロジック（循環import回避のため複製）"""
+    if len(pred) < 2:
+        return 0.0
+    if "score" not in pred.columns:
+        pred = pred.copy()
+        pred["score"] = 0.6 * pred["p_win"] + 0.4 * pred["p_top3"]
+    ordered = pred.sort_values("score", ascending=False).reset_index(drop=True)
+    top_win = float(ordered.iloc[0].get("p_win", 0.0))
+    top_top3 = float(ordered.iloc[0].get("p_top3", 0.0))
+    margin = max(0.0, float(ordered.iloc[0]["score"]) - float(ordered.iloc[1]["score"]))
+    field_size = max(1, len(pred))
+
+    def _scale(v, lo, hi):
+        return max(0.0, min(1.0, (v - lo) / (hi - lo))) if hi > lo else 0.0
+
+    def _damp(v, places, strength):
+        base = min(0.95, float(places) / field_size)
+        return base + (min(0.999, max(0.0, v)) - base) * strength
+
+    win_part = _scale(_damp(top_win, 1, 0.90), 0.08, 0.50) * 30.0
+    top3_part = _scale(_damp(top_top3, 3, 0.78), 0.25, 0.90) * 40.0
+    margin_part = _scale(margin, 0.00, 0.35) * 20.0
+    return max(0.0, min(98.0, 10.0 + win_part + top3_part + margin_part))
+
+
+def suggest_smart(pred_df: pd.DataFrame, budget: int) -> Dict:
+    """
+    自信度とEVに基づいてレースごとに最適なスタイルを自動選択する。
+    roi_focus(EV重視)とhit_focus(的中率重視)を比較し、自信度に応じた重みで最良を選ぶ。
+    """
+    pred_for_conf = rank_predictions(pred_df, "roi_focus")
+    confidence = _compute_confidence(pred_for_conf)
+    conf_label = "HIGH" if confidence >= 75 else "MID" if confidence >= 55 else "LOW"
+
+    style_results: Dict[str, Dict] = {}
+    for style in SMART_CANDIDATES:
+        try:
+            r = suggest(pred_df, budget=budget, style=style)
+            if r["total_bet"] > 0:
+                style_results[style] = r
+        except Exception:
+            pass
+
+    if not style_results:
+        return {
+            "style": STYLE_CONFIG["smart"]["name"],
+            "style_desc": STYLE_CONFIG["smart"]["desc"],
+            "budget": budget,
+            "total_bet": 0,
+            "n_tickets": 0,
+            "expected_return": 0.0,
+            "expected_profit": 0.0,
+            "expected_roi": 0.0,
+            "p_any_hit": 0.0,
+            "bets": [],
+            "chosen_style": None,
+            "confidence": confidence,
+        }
+
+    # 自信度に応じてEVと的中確率の重みを変える
+    if confidence >= 75:     # HIGH: EV(回収率)重視
+        ev_w, hit_w = 0.80, 0.20
+    elif confidence >= 55:   # MID: バランス
+        ev_w, hit_w = 0.60, 0.40
+    else:                    # LOW: 的中率重視
+        ev_w, hit_w = 0.40, 0.60
+
+    def _score(style: str) -> float:
+        r = style_results[style]
+        ev = float(r["expected_roi"])
+        p_hit = float(r["p_any_hit"])
+        return ev_w * ev + hit_w * p_hit
+
+    best_style = max(style_results, key=_score)
+    result = dict(style_results[best_style])
+    result["chosen_style"] = best_style
+    result["confidence"] = confidence
+    result["style"] = f"🧠 自動選択 → {STYLE_CONFIG[best_style]['name']}"
+    result["style_desc"] = (
+        f"自信度 {confidence:.0f}点({conf_label}) 自動選択: "
+        + STYLE_CONFIG[best_style]["desc"]
+    )
+    return result
+
+
+# =====================================================
 # 公開API
 # =====================================================
 def rank_predictions(pred_df: pd.DataFrame, style: str) -> pd.DataFrame:
@@ -1363,10 +1422,12 @@ def suggest(pred_df: pd.DataFrame, budget: int, style: str = "ai") -> Dict:
     """
     pred_df: KeibaPredictor.predict_race の出力
     budget: 予算(円)
-    style: 'kenjitsu' / 'balance' / 'ippatsu' / 'ai'
+    style: 'smart' / 'hybrid' / 'roi_focus' / 'hit_focus' / etc.
     """
     if style not in STYLE_CONFIG:
         style = "ai"
+    if STYLE_CONFIG[style].get("_is_smart"):
+        return suggest_smart(pred_df, budget)
     pred_df = rank_predictions(pred_df, style)
     cfg = STYLE_CONFIG[style]
     if cfg.get("stake_mode") == "rank_plan":

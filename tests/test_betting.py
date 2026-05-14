@@ -117,6 +117,9 @@ class BettingFlowTests(unittest.TestCase):
             "_test_kelly",
             "_test_min_kinds",
             "_test_top1_hit",
+            "_test_select_p_hit",
+            "_test_select_balanced",
+            "_test_no_result",
         ]:
             betting.STYLE_CONFIG.pop(name, None)
 
@@ -178,38 +181,6 @@ class BettingFlowTests(unittest.TestCase):
         self.assertTrue(all(b["bet"] % 100 == 0 for b in bets))
         self.assertTrue(all(b["ev"] >= 1.0 for b in bets))
 
-    def test_hit_hybrid_uses_roi_oriented_candidates(self):
-        result = betting.suggest(sample_predictions(), budget=3000, style="hybrid_hit")
-        kinds = {b["ticket_kind"] for b in result["bets"]}
-
-        self.assertTrue(result["bets"])
-        self.assertLessEqual(result["total_bet"], 3000)
-        self.assertTrue(all(b["bet"] % 100 == 0 for b in result["bets"]))
-        self.assertIn("wide", kinds)
-        self.assertIn("sanrenpuku", kinds)
-
-    def test_roi_focus_uses_trio_and_trifecta(self):
-        pred = pd.DataFrame(
-            [
-                {"horse_no": 1, "p_win": 0.45, "p_top3": 0.90, "odds": 20.0, "pred_rank": 1},
-                {"horse_no": 2, "p_win": 0.25, "p_top3": 0.80, "odds": 20.0, "pred_rank": 2},
-                {"horse_no": 3, "p_win": 0.20, "p_top3": 0.75, "odds": 20.0, "pred_rank": 3},
-                {"horse_no": 4, "p_win": 0.05, "p_top3": 0.25, "odds": 20.0, "pred_rank": 4},
-                {"horse_no": 5, "p_win": 0.03, "p_top3": 0.20, "odds": 20.0, "pred_rank": 5},
-            ]
-        )
-
-        result = betting.suggest(pred, budget=3000, style="roi_focus")
-        kinds = {b["ticket_kind"] for b in result["bets"]}
-
-        self.assertEqual(len(result["bets"]), 2)
-        self.assertEqual(kinds, {"sanrenpuku", "sanrentan"})
-        self.assertEqual(result["total_bet"], 3000)
-        self.assertGreater(
-            sum(b["bet"] for b in result["bets"] if b["ticket_kind"] == "sanrentan"),
-            sum(b["bet"] for b in result["bets"] if b["ticket_kind"] == "sanrenpuku"),
-        )
-
     def test_allocate_budget_strict_ev_can_skip_bad_candidates(self):
         cands = [
             {"ticket_kind": "tansho", "p_hit": 0.1, "odds_est": 2.0, "ev": 0.2, "bet": 0, "horses": [1]},
@@ -217,7 +188,7 @@ class BettingFlowTests(unittest.TestCase):
 
         self.assertEqual(betting.allocate_budget(cands, 1000, "maxroi"), [])
 
-    def test_rank_predictions_uses_blended_win_and_top3_score(self):
+    def test_rank_predictions_uses_win_for_top_and_top3_for_rest(self):
         df = pd.DataFrame(
             [
                 {"race_id": 10, "horse_no": 4, "p_win": 0.10, "p_top3": 0.80, "pred_rank": 1},
@@ -227,11 +198,11 @@ class BettingFlowTests(unittest.TestCase):
             ]
         )
 
-        ranked = betting.rank_predictions(df, "hybrid")
+        ranked = betting.rank_predictions(df, "hit_focus")
 
-        self.assertEqual(ranked.loc[0, "horse_no"], 4)
+        self.assertEqual(ranked.loc[0, "horse_no"], 1)
         self.assertEqual(ranked.loc[0, "pred_rank"], 1)
-        self.assertEqual(ranked.loc[2, "horse_no"], 2)
+        self.assertEqual(ranked.loc[2, "horse_no"], 3)
         self.assertEqual(ranked.loc[2, "pred_rank"], 1)
 
     def test_suggest_and_format_have_consistent_totals(self):
@@ -348,6 +319,66 @@ class BettingFlowTests(unittest.TestCase):
 
         self.assertEqual(len(out), 1)
         self.assertEqual(out[0]["bet"], 500)
+
+    def test_smart_mode_and_no_result_fallback_paths(self):
+        smart = betting.suggest(sample_predictions(), budget=3000, style="smart")
+
+        self.assertIn(smart.get("chosen_style"), {"roi_focus", "hit_focus"})
+        self.assertGreaterEqual(smart.get("confidence", 0.0), 0.0)
+
+        betting.STYLE_CONFIG["_test_no_result"] = {
+            "name": "no result",
+            "desc": "no result",
+            "tickets": ["tansho"],
+            "max_combos": {"tansho": 1},
+            "min_p": {"tansho": 0.99},
+            "kelly_frac": 0.25,
+            "min_ev": 99.0,
+            "strict_ev": True,
+            "min_tickets": 1,
+        }
+        bad = betting.suggest(sample_predictions(), budget=3000, style="_test_no_result")
+        self.assertEqual(bad["total_bet"], 0)
+        self.assertEqual(bad["bets"], [])
+
+    def test_selection_sort_modes_and_exception_tolerant_limits(self):
+        cfg_hit = {"selection_key": "p_hit"}
+        cfg_balanced = {"selection_key": "balanced"}
+        cand = {"ticket_kind": "wide", "p_hit": 0.4, "ev": 1.3, "horses": [1, 2], "order_tiebreak": [0.5]}
+
+        self.assertGreater(betting.selection_sort_tuple(cand, cfg_hit)[0], 0.0)
+        self.assertGreater(betting.selection_sort_tuple(cand, cfg_balanced)[0], 0.0)
+        self.assertTrue(betting.rank_allowed_for_candidate({"ticket_kind": "wide", "max_pred_rank": "bad"}, {"max_pred_rank_by_kind": {"wide": 2}}))
+        self.assertTrue(betting.odds_allowed_for_candidate({"ticket_kind": "wide", "odds_est": "bad"}, {"max_odds_by_kind": {"wide": 2.0}}))
+
+    def test_seed_each_kind_and_candidate_odds_fallback_paths(self):
+        cfg = {
+            "name": "test",
+            "desc": "test",
+            "tickets": ["tansho", "fukusho", "wide"],
+            "max_combos": {"tansho": 1, "fukusho": 1, "wide": 1},
+            "kelly_frac": 0.25,
+            "min_ev": 1.0,
+            "strict_ev": True,
+            "seed_each_kind": True,
+            "min_tickets": 1,
+            "max_total_tickets": 2,
+            "stake_mode": "equal",
+        }
+        betting.STYLE_CONFIG["_test_select_p_hit"] = cfg
+        out = betting.allocate_budget(self.cands(), 1000, "_test_select_p_hit")
+        self.assertLessEqual(len(out), 2)
+
+        original = sys.modules.get("race_scraper")
+        sys.modules["race_scraper"] = types.SimpleNamespace(actual_odds_multiplier=lambda *args: (_ for _ in ()).throw(RuntimeError("boom")))
+        try:
+            odds = betting.candidate_odds("wide", [1, 2], 4.5, {}, {"ok": True})
+        finally:
+            if original is None:
+                sys.modules.pop("race_scraper", None)
+            else:
+                sys.modules["race_scraper"] = original
+        self.assertEqual(odds, 4.5)
 
 
 if __name__ == "__main__":
