@@ -39,6 +39,8 @@ _predictors: Dict[str, KeibaPredictor] = {}
 VISIBLE_STYLE_KEYS = ("smart", "hybrid", "roi_focus", "hit_focus")
 VISIBLE_STYLE_CONFIG = {key: STYLE_CONFIG[key] for key in VISIBLE_STYLE_KEYS}
 DEFAULT_STYLE = "smart"
+VISIBLE_MODEL_KEYS = ("market", "no_market_lambdarank_v2")
+VISIBLE_MODEL_VARIANTS = {k: MODEL_VARIANTS[k] for k in VISIBLE_MODEL_KEYS}
 VENUE_OPTIONS = [(code, name) for code, name in sorted(VENUE_NAMES.items(), key=lambda item: int(item[0]))]
 UPDATE_JOBS: Dict[str, Dict] = {}
 UPDATE_LOCK = threading.Lock()
@@ -62,7 +64,7 @@ def force_utf8_response(response):
 def inject_form_options():
     return {
         "venue_options": VENUE_OPTIONS,
-        "model_variants": MODEL_VARIANTS,
+        "model_variants": VISIBLE_MODEL_VARIANTS,
         "selected_model_variant": normalize_model_variant(request.values.get("model_variant")),
     }
 

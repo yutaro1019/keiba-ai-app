@@ -49,9 +49,18 @@ _HISTORY_CACHE: Optional[pd.DataFrame] = None
 DEFAULT_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept-Language": "ja,en-US;q=0.8,en;q=0.6",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Cache-Control": "max-age=0",
 }
 
 VENUE_NAMES = {
@@ -1384,7 +1393,18 @@ def fetch_html(url: str) -> str:
     # Windows/proxy環境で HTTPS_PROXY=http://127.0.0.1:9 のような壊れた設定が
     # 入っていると取得に失敗するため、アプリのスクレイピングでは環境プロキシを無視する。
     session.trust_env = False
-    res = session.get(url, headers=DEFAULT_HEADERS, timeout=20)
+    headers = dict(DEFAULT_HEADERS)
+    # neteiba はリファラーなしで直接アクセスすると弾くことがある。
+    # 事前にトップページを取得してクッキーをセットし、Referer を付与する。
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        session.get(origin, headers=headers, timeout=15)
+        headers["Referer"] = origin + "/"
+    except Exception:
+        pass
+    res = session.get(url, headers=headers, timeout=30)
     res.raise_for_status()
     res.encoding = res.apparent_encoding or res.encoding
     return res.text
