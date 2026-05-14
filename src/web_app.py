@@ -1050,7 +1050,7 @@ def simulate_period(
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
         "style": style,
-        "style_name": STYLE_CONFIG[style]["name"],
+        "style_name": VISIBLE_STYLE_CONFIG[style]["name"],
         "model_variant": model_variant,
         "model_variant_label": MODEL_VARIANTS[model_variant]["label"],
         "budget": budget,
