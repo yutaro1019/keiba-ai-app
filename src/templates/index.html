@@ -419,6 +419,14 @@
                   {% endfor %}
                 </select>
               </div>
+              <div class="field">
+                <label for="day_model_variant">予想モデル</label>
+                <select id="day_model_variant" name="model_variant">
+                  {% for key, cfg in model_variants.items() %}
+                    <option value="{{ key }}" {% if key == selected_model_variant %}selected{% endif %}>{{ cfg.label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
             </div>
             <label class="check"><input type="checkbox" name="force_update" checked> 日付の全レースを取得し直す</label>
             <button type="submit">この日の全レースを予想</button>
@@ -476,6 +484,14 @@
                     {% endfor %}
                   </select>
                 </div>
+                <div class="field">
+                  <label for="race_model_variant">予想モデル</label>
+                  <select id="race_model_variant" name="model_variant">
+                    {% for key, cfg in model_variants.items() %}
+                      <option value="{{ key }}" {% if key == selected_model_variant %}selected{% endif %}>{{ cfg.label }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
               </div>
               <label class="check"><input type="checkbox" name="force_update" checked> このレースを取得し直す</label>
               <button class="secondary" type="submit">指定レースだけ予想</button>
@@ -525,6 +541,8 @@
               <div class="warning">
                 {{ updates.start_date }} から {{ updates.end_date }} まで {{ updates.scanned_dates }}日検索。
                 発見 {{ updates.discovered_races }}R / 既存 {{ updates.skipped_existing }}R / 更新 {{ updates.updated }}R / 失敗 {{ updates.failed }}R。
+                {% if updates.lookup_updated %}オッズ・人気なしモデル用lookupも更新済み。{% endif %}
+                {% if updates.lookup_update and updates.lookup_update.error %}lookup更新エラー: {{ updates.lookup_update.error }}{% endif %}
                 {% if updates.stopped_by_limit %}最大取得数で停止しました。{% endif %}
               </div>
             {% endif %}
@@ -576,6 +594,14 @@
               <select id="sim_style" name="style">
                 {% for key, cfg in styles.items() %}
                   <option value="{{ key }}" {% if key == selected_style %}selected{% endif %}>{{ cfg.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label for="sim_model_variant">予想モデル</label>
+              <select id="sim_model_variant" name="model_variant">
+                {% for key, cfg in model_variants.items() %}
+                  <option value="{{ key }}" {% if key == selected_model_variant %}selected{% endif %}>{{ cfg.label }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -635,6 +661,7 @@
           <div class="metric"><div class="name">買い目 的中率</div><div class="value">{{ "%.1f%%"|format(sim_result.ticket_hit_rate) }}</div></div>
           <div class="metric"><div class="name">平均点数</div><div class="value">{{ "%.1f"|format(sim_result.avg_tickets) }}</div></div>
           <div class="metric"><div class="name">最低自信度</div><div class="value">{{ "%.1f"|format(sim_result.min_confidence) }}</div></div>
+          <div class="metric"><div class="name">予想モデル</div><div class="value">{{ sim_result.model_variant_label|default("") }}</div></div>
         </div>
         <div class="body">
           <div><strong>予想精度:</strong>
@@ -730,6 +757,7 @@
           <div class="metric"><div class="name">予想成功</div><div class="value good">{{ day_result.races|length }}</div></div>
           <div class="metric"><div class="name">失敗</div><div class="value warn">{{ day_result.errors|length }}</div></div>
           <div class="metric"><div class="name">予算/レース</div><div class="value">¥{{ "{:,}".format(day_result.budget) }}</div></div>
+          <div class="metric"><div class="name">予想モデル</div><div class="value">{{ model_variants[day_result.model_variant|default("market")].label }}</div></div>
           <div class="metric"><div class="name">表示順</div><div class="value" id="instant-sort-label">開催順</div></div>
         </div>
         <div class="body">
@@ -832,6 +860,39 @@
                   </table>
                 </div>
               </div>
+              {% if r.payload.kelly_bets %}
+              <div style="border-top:1px solid var(--line);padding-top:10px;margin-top:2px">
+                <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:var(--accent)">
+                  Kelly AI 推薦馬券（資金10万円・EV+10%以上・馬連＋馬単）
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th class="left">券種</th>
+                      <th class="left">馬番</th>
+                      <th>推定オッズ</th>
+                      <th>モデル確率</th>
+                      <th>EV</th>
+                      <th>Kelly</th>
+                      <th>推薦額</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                  {% for b in r.payload.kelly_bets %}
+                    <tr>
+                      <td class="left">{{ b.ticket_kind }}</td>
+                      <td class="left">{{ b.horses | join("-") }}</td>
+                      <td>{{ "%.1f"|format(b.market_odds) }}</td>
+                      <td>{{ "%.2f%%"|format(b.model_prob * 100) }}</td>
+                      <td style="color:var(--good);font-weight:700">{{ "+%.1f%%"|format(b.ev * 100) }}</td>
+                      <td>{{ "%.2f%%"|format(b.kelly * 100) }}</td>
+                      <td style="font-weight:700">¥{{ "{:,}".format(b.bet_amount) }}</td>
+                    </tr>
+                  {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% endif %}
             </details>
           {% endfor %}
         </div>
@@ -1018,7 +1079,8 @@
       if (data.summary) {
         logEl.textContent =
           `検索 ${data.summary.scanned_dates}日 / 発見 ${data.summary.discovered_races}R / ` +
-          `既存 ${data.summary.skipped_existing}R / 更新 ${data.summary.updated}R / 失敗 ${data.summary.failed}R`;
+          `既存 ${data.summary.skipped_existing}R / 更新 ${data.summary.updated}R / 失敗 ${data.summary.failed}R` +
+          (data.summary.lookup_updated ? " / lookup更新済み" : "");
       }
     }
 

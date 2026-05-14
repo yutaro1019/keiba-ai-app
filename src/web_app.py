@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from betting import STYLE_CONFIG, format_suggestion, rank_predictions, suggest
 from keiba_ai import display_probability_percent, race_confidence, settle_bet
-from predictor import DATA_PKL, KeibaPredictor
+from predictor import DATA_PKL, DEFAULT_MODEL_VARIANT, MODEL_VARIANTS, KeibaPredictor, normalize_model_variant
 from race_scraper import (
     auto_update_missing,
     candidate_race_dates,
@@ -35,10 +35,10 @@ from race_scraper import (
 app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
 app.json.ensure_ascii = False
-_predictor: KeibaPredictor | None = None
-VISIBLE_STYLE_KEYS = ("hybrid", "hybrid_hit", "roi_focus", "hit_focus")
+_predictors: Dict[str, KeibaPredictor] = {}
+VISIBLE_STYLE_KEYS = ("smart", "hybrid", "roi_focus", "hit_focus")
 VISIBLE_STYLE_CONFIG = {key: STYLE_CONFIG[key] for key in VISIBLE_STYLE_KEYS}
-DEFAULT_STYLE = "hybrid"
+DEFAULT_STYLE = "smart"
 VENUE_OPTIONS = [(code, name) for code, name in sorted(VENUE_NAMES.items(), key=lambda item: int(item[0]))]
 UPDATE_JOBS: Dict[str, Dict] = {}
 UPDATE_LOCK = threading.Lock()
@@ -60,18 +60,33 @@ def force_utf8_response(response):
 
 @app.context_processor
 def inject_form_options():
-    return {"venue_options": VENUE_OPTIONS}
+    return {
+        "venue_options": VENUE_OPTIONS,
+        "model_variants": MODEL_VARIANTS,
+        "selected_model_variant": normalize_model_variant(request.values.get("model_variant")),
+    }
 
 
 def normalize_style(style: str | None) -> str:
     return style if style in VISIBLE_STYLE_CONFIG else DEFAULT_STYLE
 
 
-def predictor() -> KeibaPredictor:
-    global _predictor
-    if _predictor is None:
-        _predictor = KeibaPredictor()
-    return _predictor
+def predictor(model_variant: str | None = None) -> KeibaPredictor:
+    variant = normalize_model_variant(model_variant)
+    if variant not in _predictors:
+        try:
+            _predictors[variant] = KeibaPredictor(model_variant=variant)
+        except Exception as exc:
+            if variant != DEFAULT_MODEL_VARIANT:
+                # モデルファイルが見つからない場合はデフォルトへフォールバック
+                import logging
+                logging.warning(f"モデル'{variant}'の読込に失敗。デフォルトモデルを使用します: {exc}")
+                if DEFAULT_MODEL_VARIANT not in _predictors:
+                    _predictors[DEFAULT_MODEL_VARIANT] = KeibaPredictor(model_variant=DEFAULT_MODEL_VARIANT)
+                _predictors[variant] = _predictors[DEFAULT_MODEL_VARIANT]
+            else:
+                raise
+    return _predictors[variant]
 
 
 def format_eta(seconds: float | None) -> str:
@@ -230,6 +245,8 @@ def run_update_job(job_id: str, start_date: str | None, end_date: str | None, li
             skip_cached=True,
             progress=lambda payload: progress_to_job(job_id, payload),
         )
+        if result.get("lookup_updated"):
+            _predictors.pop("no_market", None)
         set_job_state(
             job_id,
             status="completed",
@@ -262,6 +279,7 @@ def run_predict_day_job(
     kaisai_date: str,
     budget: int,
     style: str,
+    model_variant: str,
     sort_mode: str,
     force_update: bool,
 ):
@@ -285,6 +303,7 @@ def run_predict_day_job(
             kaisai_date=kaisai_date,
             budget=budget,
             style=style,
+            model_variant=model_variant,
             sort_mode=sort_mode,
             force_update=force_update,
             progress=lambda payload: progress_to_job(job_id, payload),
@@ -326,6 +345,7 @@ def run_sim_job(
     end_date: str,
     budget: int,
     style: str,
+    model_variant: str,
     min_confidence: float,
 ):
     set_job_state(
@@ -349,6 +369,7 @@ def run_sim_job(
             end_date=end_date,
             budget=budget,
             style=style,
+            model_variant=model_variant,
             min_confidence=min_confidence,
             progress=lambda payload: progress_to_job(job_id, payload),
             should_cancel=lambda: job_cancel_requested(job_id),
@@ -429,6 +450,8 @@ def _settle_bets_and_hit_points(bets: List[Dict], pred: pd.DataFrame, payout_cac
 
 
 def allocation_label(style: str) -> str:
+    if STYLE_CONFIG.get(style, {}).get("_is_smart"):
+        return "自信度45点以上のレースのみ自動選択。HIGH(≥75)→ROI重視、MID→バランス。LOW(<45)はデフォルトでスキップ。"
     cfg = STYLE_CONFIG.get(style, {})
     mode = cfg.get("stake_mode", "kelly")
     min_ev = cfg.get("min_ev", 0.85)
@@ -485,8 +508,9 @@ def allocation_label(style: str) -> str:
     return f"EV下限={min_ev:.2f}を超えた買い目に、分数ケリー基準で配分。"
 
 
-def prediction_payload_from_race(race, budget: int, style: str) -> Dict:
-    raw_pred = predictor().predict_race(race.rows)
+def prediction_payload_from_race(race, budget: int, style: str, model_variant: str = DEFAULT_MODEL_VARIANT) -> Dict:
+    model_variant = normalize_model_variant(model_variant)
+    raw_pred = predictor(model_variant).predict_race(race.rows)
     pred = rank_for_style(raw_pred, style)
     conf = race_confidence(pred)
     result = suggest(pred, budget=budget, style=style)
@@ -541,14 +565,42 @@ def prediction_payload_from_race(race, budget: int, style: str) -> Dict:
             "unit_count": int(b.get("unit_count", 1)),
         })
 
+    kelly_bets = []
+    if model_variant == "no_market_lambdarank_v2":
+        try:
+            tansho_entries = [
+                {
+                    "horses": [int(row["horse_no"])],
+                    "odds": float(row["odds"]) if pd.notna(row.get("odds")) else 100.0,
+                }
+                for _, row in pred.iterrows()
+                if pd.notna(row.get("horse_no"))
+            ]
+            kelly_bets = predictor(model_variant).recommend_bets(
+                race.rows,
+                {"tansho": tansho_entries},
+                bankroll=100_000,
+                kelly_factor=0.25,
+                min_ev=0.10,
+                top_k=4,
+                ticket_types=["umaren", "umatan"],
+            )
+        except Exception:
+            kelly_bets = []
+
+    chosen_style = result.get("chosen_style") or style
     return {
         "race": race,
         "meta": race.meta,
         "confidence": conf,
         "style": style,
-        "style_name": STYLE_CONFIG[style]["name"],
-        "style_desc": STYLE_CONFIG[style]["desc"],
-        "allocation": allocation_label(style),
+        "style_name": result.get("style", STYLE_CONFIG[style]["name"]),
+        "style_desc": result.get("style_desc", STYLE_CONFIG[style]["desc"]),
+        "chosen_style": chosen_style,
+        "chosen_confidence": result.get("confidence"),
+        "model_variant": model_variant,
+        "model_variant_label": MODEL_VARIANTS[model_variant]["label"],
+        "allocation": allocation_label(chosen_style),
         "warning": (
             "馬番・枠番が未確定のため、買い目の番号は登録順の仮番号です。"
             "出馬確定後に情報更新してから購入判断してください。"
@@ -556,6 +608,7 @@ def prediction_payload_from_race(race, budget: int, style: str) -> Dict:
         ),
         "prediction_rows": prediction_rows,
         "bets": bets,
+        "kelly_bets": kelly_bets,
         "result": result,
         "plain_text": format_suggestion(result),
     }
@@ -587,6 +640,7 @@ def predict_selected_race_payload(
     round_no: int,
     budget: int,
     style: str,
+    model_variant: str,
     force_update: bool,
 ) -> Dict:
     target_date = parse_date(kaisai_date)
@@ -623,7 +677,7 @@ def predict_selected_race_payload(
         )
 
     race = load_or_scrape(str(matched[0]), force=force_update)
-    payload = prediction_payload_from_race(race, budget, style)
+    payload = prediction_payload_from_race(race, budget, style, model_variant)
     notices = [payload["warning"]] if payload.get("warning") else []
     return {
         "date": target_date.isoformat(),
@@ -633,6 +687,7 @@ def predict_selected_race_payload(
         "notices": notices,
         "sort_mode": "race",
         "style": style,
+        "model_variant": normalize_model_variant(model_variant),
         "budget": budget,
         "mode_title": f"{target_date.isoformat()} {VENUE_NAMES[venue_code]} {round_no_int}R 予想",
         "selected_race": True,
@@ -643,6 +698,7 @@ def predict_day_payload(
     kaisai_date: str,
     budget: int,
     style: str,
+    model_variant: str,
     sort_mode: str,
     force_update: bool,
     progress: Optional[Callable[[Dict], None]] = None,
@@ -692,7 +748,7 @@ def predict_day_payload(
         try:
             race = load_or_scrape(str(race_id), force=force_update)
             _check_cancel()
-            payload = prediction_payload_from_race(race, budget, style)
+            payload = prediction_payload_from_race(race, budget, style, model_variant)
             _check_cancel()
             if payload.get("warning") and payload["warning"] not in notices:
                 notices.append(payload["warning"])
@@ -729,6 +785,7 @@ def predict_day_payload(
         "notices": notices,
         "sort_mode": sort_mode,
         "style": style,
+        "model_variant": normalize_model_variant(model_variant),
         "budget": budget,
     }
 
@@ -746,6 +803,7 @@ def simulate_period(
     end_date: str,
     budget: int,
     style: str,
+    model_variant: str,
     min_confidence: float,
     progress: Optional[Callable[[Dict], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
@@ -785,7 +843,8 @@ def simulate_period(
         "total": 1,
         "message": f"{len(base_groups)}R分をまとめてAI予測します",
     })
-    predicted_all = predictor().predict_frame(sim_df)
+    model_variant = normalize_model_variant(model_variant)
+    predicted_all = predictor(model_variant).predict_frame(sim_df)
     _check_cancel()
     _emit_sim_progress({
         "phase": "model",
@@ -938,6 +997,8 @@ def simulate_period(
         "end_date": end.isoformat(),
         "style": style,
         "style_name": STYLE_CONFIG[style]["name"],
+        "model_variant": model_variant,
+        "model_variant_label": MODEL_VARIANTS[model_variant]["label"],
         "budget": budget,
         "min_confidence": min_confidence,
         "tested": tested,
@@ -988,6 +1049,7 @@ def index():
 @app.post("/predict-day")
 def predict_day_route():
     style = normalize_style(request.form.get("style", DEFAULT_STYLE))
+    model_variant = normalize_model_variant(request.form.get("model_variant"))
     sort_mode = request.form.get("sort_mode", "race")
     try:
         budget = int(str(request.form.get("budget", "3000")).replace(",", ""))
@@ -996,7 +1058,7 @@ def predict_day_route():
     force_update = request.form.get("force_update") == "on"
     kaisai_date = request.form.get("kaisai_date", "")
     try:
-        day_result = predict_day_payload(kaisai_date, budget, style, sort_mode, force_update)
+        day_result = predict_day_payload(kaisai_date, budget, style, model_variant, sort_mode, force_update)
         error = None
     except Exception as exc:
         day_result = None
@@ -1007,6 +1069,7 @@ def predict_day_route():
         cached=list_cached_races(),
         date_candidates=candidate_race_dates(),
         selected_style=style,
+        selected_model_variant=model_variant,
         budget=budget,
         result=None,
         day_result=day_result,
@@ -1019,6 +1082,7 @@ def predict_day_route():
 @app.post("/predict-race")
 def predict_race_select_route():
     style = normalize_style(request.form.get("style", DEFAULT_STYLE))
+    model_variant = normalize_model_variant(request.form.get("model_variant"))
     try:
         budget = int(str(request.form.get("budget", "3000")).replace(",", ""))
     except ValueError:
@@ -1034,6 +1098,7 @@ def predict_race_select_route():
             round_no=int(round_no),
             budget=max(100, budget),
             style=style,
+            model_variant=model_variant,
             force_update=force_update,
         )
         error = None
@@ -1046,6 +1111,7 @@ def predict_race_select_route():
         cached=list_cached_races(),
         date_candidates=candidate_race_dates(),
         selected_style=style,
+        selected_model_variant=model_variant,
         budget=budget,
         result=None,
         day_result=day_result,
@@ -1059,6 +1125,7 @@ def predict_race_select_route():
 def api_predict_day_start():
     data = request.get_json(silent=True) or request.form
     style = normalize_style(str(data.get("style", DEFAULT_STYLE)))
+    model_variant = normalize_model_variant(str(data.get("model_variant", DEFAULT_MODEL_VARIANT)))
     sort_mode = str(data.get("sort_mode", "race") or "race")
     try:
         budget = int(str(data.get("budget", "3000")).replace(",", ""))
@@ -1083,7 +1150,7 @@ def api_predict_day_start():
     )
     thread = threading.Thread(
         target=run_predict_day_job,
-        args=(job_id, kaisai_date, max(100, budget), style, sort_mode, force_update),
+        args=(job_id, kaisai_date, max(100, budget), style, model_variant, sort_mode, force_update),
         daemon=True,
     )
     thread.start()
@@ -1131,6 +1198,7 @@ def predict_day_result_route(job_id: str):
         cached=list_cached_races(),
         date_candidates=candidate_race_dates(),
         selected_style=normalize_style(day_result.get("style") if day_result else DEFAULT_STYLE),
+        selected_model_variant=normalize_model_variant(day_result.get("model_variant") if day_result else DEFAULT_MODEL_VARIANT),
         budget=int(day_result.get("budget", 3000)) if day_result else 3000,
         result=None,
         day_result=day_result,
@@ -1143,6 +1211,7 @@ def predict_day_result_route(job_id: str):
 @app.post("/simulate")
 def simulate_route():
     style = normalize_style(request.form.get("style", DEFAULT_STYLE))
+    model_variant = normalize_model_variant(request.form.get("model_variant"))
     try:
         budget = int(str(request.form.get("budget", "3000")).replace(",", ""))
     except ValueError:
@@ -1158,6 +1227,7 @@ def simulate_route():
             end_date=request.form.get("sim_end", ""),
             budget=budget,
             style=style,
+            model_variant=model_variant,
             min_confidence=min_conf,
         )
         error = None
@@ -1171,6 +1241,7 @@ def simulate_route():
         cached=list_cached_races(),
         date_candidates=candidate_race_dates(),
         selected_style=style,
+        selected_model_variant=model_variant,
         budget=budget,
         result=None,
         day_result=None,
@@ -1184,6 +1255,7 @@ def simulate_route():
 def api_simulate_start():
     data = request.get_json(silent=True) or request.form
     style = normalize_style(str(data.get("style", DEFAULT_STYLE)))
+    model_variant = normalize_model_variant(str(data.get("model_variant", DEFAULT_MODEL_VARIANT)))
     try:
         budget = int(str(data.get("budget", "3000")).replace(",", ""))
     except ValueError:
@@ -1215,6 +1287,7 @@ def api_simulate_start():
             str(data.get("sim_end", "")),
             max(100, budget),
             style,
+            model_variant,
             min_conf,
         ),
         daemon=True,
@@ -1267,6 +1340,7 @@ def simulate_result_route(job_id: str):
         cached=list_cached_races(),
         date_candidates=candidate_race_dates(),
         selected_style=normalize_style(sim_result.get("style") if sim_result else DEFAULT_STYLE),
+        selected_model_variant=normalize_model_variant(sim_result.get("model_variant") if sim_result else DEFAULT_MODEL_VARIANT),
         budget=int(sim_result.get("budget", 3000)) if sim_result else 3000,
         result=None,
         day_result=None,
@@ -1292,6 +1366,8 @@ def update_route():
             limit=limit,
             skip_cached=True,
         )
+        if updates.get("lookup_updated"):
+            _predictors.pop("no_market", None)
     except Exception as exc:
         error = str(exc)
     return render_template(
@@ -1359,6 +1435,7 @@ def api_update_status(job_id: str):
             "rows_added": result.get("rows_added"),
             "latest_date": result.get("latest_date"),
             "backup_path": result.get("backup_path"),
+            "lookup_updated": result.get("lookup_updated"),
             "stopped_by_limit": result.get("stopped_by_limit"),
         }
         state["updates"] = result.get("updates", [])[:80]
