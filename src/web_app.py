@@ -65,12 +65,19 @@ def inject_form_options():
     return {
         "venue_options": VENUE_OPTIONS,
         "model_variants": VISIBLE_MODEL_VARIANTS,
-        "selected_model_variant": normalize_model_variant(request.values.get("model_variant")),
+        "selected_model_variant": normalize_visible_model(request.values.get("model_variant")),
     }
 
 
+DEFAULT_MODEL_KEY = "market"
+
 def normalize_style(style: str | None) -> str:
     return style if style in VISIBLE_STYLE_CONFIG else DEFAULT_STYLE
+
+
+def normalize_visible_model(model_variant: str | None) -> str:
+    key = str(model_variant or DEFAULT_MODEL_KEY)
+    return key if key in VISIBLE_MODEL_VARIANTS else DEFAULT_MODEL_KEY
 
 
 def predictor(model_variant: str | None = None) -> KeibaPredictor:
@@ -1051,7 +1058,7 @@ def index():
 @app.post("/predict-day")
 def predict_day_route():
     style = normalize_style(request.form.get("style", DEFAULT_STYLE))
-    model_variant = normalize_model_variant(request.form.get("model_variant"))
+    model_variant = normalize_visible_model(request.form.get("model_variant"))
     sort_mode = request.form.get("sort_mode", "race")
     try:
         budget = int(str(request.form.get("budget", "3000")).replace(",", ""))
@@ -1084,7 +1091,7 @@ def predict_day_route():
 @app.post("/predict-race")
 def predict_race_select_route():
     style = normalize_style(request.form.get("style", DEFAULT_STYLE))
-    model_variant = normalize_model_variant(request.form.get("model_variant"))
+    model_variant = normalize_visible_model(request.form.get("model_variant"))
     try:
         budget = int(str(request.form.get("budget", "3000")).replace(",", ""))
     except ValueError:
@@ -1127,7 +1134,7 @@ def predict_race_select_route():
 def api_predict_day_start():
     data = request.get_json(silent=True) or request.form
     style = normalize_style(str(data.get("style", DEFAULT_STYLE)))
-    model_variant = normalize_model_variant(str(data.get("model_variant", DEFAULT_MODEL_VARIANT)))
+    model_variant = normalize_visible_model(str(data.get("model_variant", DEFAULT_MODEL_KEY)))
     sort_mode = str(data.get("sort_mode", "race") or "race")
     try:
         budget = int(str(data.get("budget", "3000")).replace(",", ""))
@@ -1200,7 +1207,7 @@ def predict_day_result_route(job_id: str):
         cached=list_cached_races(),
         date_candidates=candidate_race_dates(),
         selected_style=normalize_style(day_result.get("style") if day_result else DEFAULT_STYLE),
-        selected_model_variant=normalize_model_variant(day_result.get("model_variant") if day_result else DEFAULT_MODEL_VARIANT),
+        selected_model_variant=normalize_visible_model(day_result.get("model_variant") if day_result else DEFAULT_MODEL_KEY),
         budget=int(day_result.get("budget", 3000)) if day_result else 3000,
         result=None,
         day_result=day_result,
@@ -1213,7 +1220,7 @@ def predict_day_result_route(job_id: str):
 @app.post("/simulate")
 def simulate_route():
     style = normalize_style(request.form.get("style", DEFAULT_STYLE))
-    model_variant = normalize_model_variant(request.form.get("model_variant"))
+    model_variant = normalize_visible_model(request.form.get("model_variant"))
     try:
         budget = int(str(request.form.get("budget", "3000")).replace(",", ""))
     except ValueError:
@@ -1257,7 +1264,7 @@ def simulate_route():
 def api_simulate_start():
     data = request.get_json(silent=True) or request.form
     style = normalize_style(str(data.get("style", DEFAULT_STYLE)))
-    model_variant = normalize_model_variant(str(data.get("model_variant", DEFAULT_MODEL_VARIANT)))
+    model_variant = normalize_visible_model(str(data.get("model_variant", DEFAULT_MODEL_KEY)))
     try:
         budget = int(str(data.get("budget", "3000")).replace(",", ""))
     except ValueError:
@@ -1342,7 +1349,7 @@ def simulate_result_route(job_id: str):
         cached=list_cached_races(),
         date_candidates=candidate_race_dates(),
         selected_style=normalize_style(sim_result.get("style") if sim_result else DEFAULT_STYLE),
-        selected_model_variant=normalize_model_variant(sim_result.get("model_variant") if sim_result else DEFAULT_MODEL_VARIANT),
+        selected_model_variant=normalize_visible_model(sim_result.get("model_variant") if sim_result else DEFAULT_MODEL_KEY),
         budget=int(sim_result.get("budget", 3000)) if sim_result else 3000,
         result=None,
         day_result=None,
