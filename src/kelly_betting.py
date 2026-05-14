@@ -655,7 +655,7 @@ def enumerate_race_bets(
             if kelly > 0:
                 bets.append({
                     "ticket_kind":  kind,
-                    "horses":       [horse_nos[i] for i in idx_tuple],
+                    "horses":       [int(horse_nos[i]) for i in idx_tuple],
                     "model_prob":   round(model_p, 5),
                     "market_odds":  round(market_odds, 2),
                     "ev":           round(ev, 4),
