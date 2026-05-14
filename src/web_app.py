@@ -36,13 +36,13 @@ app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
 app.json.ensure_ascii = False
 _predictors: Dict[str, KeibaPredictor] = {}
-VISIBLE_STYLE_KEYS = ("smart", "hybrid", "roi_focus", "hit_focus", "kelly_ai")
+VISIBLE_STYLE_KEYS = ("roi_focus", "hit_focus", "kelly_ai")
 VISIBLE_STYLE_CONFIG = {key: STYLE_CONFIG[key] for key in VISIBLE_STYLE_KEYS if key in STYLE_CONFIG}
 VISIBLE_STYLE_CONFIG["kelly_ai"] = {
     "name": "Kelly AI（馬連・馬単）",
     "desc": "LambdaRank v2 + Kelly基準。EV+10%以上の馬連・馬単のみ推薦。no_market_lambdarank_v2専用",
 }
-DEFAULT_STYLE = "smart"
+DEFAULT_STYLE = "roi_focus"
 VISIBLE_MODEL_KEYS = ("market", "no_market_lambdarank_v2")
 VISIBLE_MODEL_VARIANTS = {k: MODEL_VARIANTS[k] for k in VISIBLE_MODEL_KEYS}
 VENUE_OPTIONS = [(code, name) for code, name in sorted(VENUE_NAMES.items(), key=lambda item: int(item[0]))]
