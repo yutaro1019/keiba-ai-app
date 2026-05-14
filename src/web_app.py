@@ -36,8 +36,12 @@ app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
 app.json.ensure_ascii = False
 _predictors: Dict[str, KeibaPredictor] = {}
-VISIBLE_STYLE_KEYS = ("smart", "hybrid", "roi_focus", "hit_focus")
-VISIBLE_STYLE_CONFIG = {key: STYLE_CONFIG[key] for key in VISIBLE_STYLE_KEYS}
+VISIBLE_STYLE_KEYS = ("smart", "hybrid", "roi_focus", "hit_focus", "kelly_ai")
+VISIBLE_STYLE_CONFIG = {key: STYLE_CONFIG[key] for key in VISIBLE_STYLE_KEYS if key in STYLE_CONFIG}
+VISIBLE_STYLE_CONFIG["kelly_ai"] = {
+    "name": "Kelly AI（馬連・馬単）",
+    "desc": "LambdaRank v2 + Kelly基準。EV+10%以上の馬連・馬単のみ推薦。no_market_lambdarank_v2専用",
+}
 DEFAULT_STYLE = "smart"
 VISIBLE_MODEL_KEYS = ("market", "no_market_lambdarank_v2")
 VISIBLE_MODEL_VARIANTS = {k: MODEL_VARIANTS[k] for k in VISIBLE_MODEL_KEYS}
@@ -459,6 +463,8 @@ def _settle_bets_and_hit_points(bets: List[Dict], pred: pd.DataFrame, payout_cac
 
 
 def allocation_label(style: str) -> str:
+    if style == "kelly_ai":
+        return "LambdaRank v2スコア × マーケットオッズでKelly係数を計算。EV+10%以上の馬連・馬単のみ。クォーターKelly(×0.25)。"
     if STYLE_CONFIG.get(style, {}).get("_is_smart"):
         return "自信度45点以上のレースのみ自動選択。HIGH(≥75)→ROI重視、MID→バランス。LOW(<45)はデフォルトでスキップ。"
     cfg = STYLE_CONFIG.get(style, {})
@@ -520,9 +526,10 @@ def allocation_label(style: str) -> str:
 def prediction_payload_from_race(race, budget: int, style: str, model_variant: str = DEFAULT_MODEL_VARIANT) -> Dict:
     model_variant = normalize_model_variant(model_variant)
     raw_pred = predictor(model_variant).predict_race(race.rows)
-    pred = rank_for_style(raw_pred, style)
+    rank_style = "smart" if style == "kelly_ai" else style
+    pred = rank_for_style(raw_pred, rank_style)
     conf = race_confidence(pred)
-    result = suggest(pred, budget=budget, style=style)
+    result = suggest(pred, budget=budget, style=rank_style)
 
     prediction_rows: List[Dict] = []
     horse_no_labels: Dict[int, str] = {}
@@ -585,10 +592,11 @@ def prediction_payload_from_race(race, budget: int, style: str, model_variant: s
                 for _, row in pred.iterrows()
                 if pd.notna(row.get("horse_no"))
             ]
+            kelly_bankroll = budget if style == "kelly_ai" else 100_000
             kelly_bets = predictor(model_variant).recommend_bets(
                 race.rows,
                 {"tansho": tansho_entries},
-                bankroll=100_000,
+                bankroll=kelly_bankroll,
                 kelly_factor=0.25,
                 min_ev=0.10,
                 top_k=4,
@@ -603,8 +611,8 @@ def prediction_payload_from_race(race, budget: int, style: str, model_variant: s
         "meta": race.meta,
         "confidence": conf,
         "style": style,
-        "style_name": result.get("style", STYLE_CONFIG[style]["name"]),
-        "style_desc": result.get("style_desc", STYLE_CONFIG[style]["desc"]),
+        "style_name": result.get("style", VISIBLE_STYLE_CONFIG[style]["name"]),
+        "style_desc": result.get("style_desc", VISIBLE_STYLE_CONFIG[style].get("desc", "")),
         "chosen_style": chosen_style,
         "chosen_confidence": result.get("confidence"),
         "model_variant": model_variant,
@@ -906,7 +914,9 @@ def simulate_period(
         if len(race_df) < 3:
             continue
         tested += 1
-        pred = rank_for_style(race_df, style)
+        is_kelly = style == "kelly_ai"
+        rank_style = "smart" if is_kelly else style
+        pred = rank_for_style(race_df, rank_style)
         conf = race_confidence(pred)
 
         top = pred.iloc[0]
@@ -917,7 +927,7 @@ def simulate_period(
         top3_hits = len(pred_top3 & actual_top3)
         top3_hit_sum += top3_hits
 
-        if conf["score"] < min_confidence:
+        if not is_kelly and conf["score"] < min_confidence:
             skipped_conf += 1
             _emit_sim_progress({
                 "phase": "simulate",
@@ -927,7 +937,42 @@ def simulate_period(
             })
             continue
 
-        result = suggest(pred, budget=budget, style=style)
+        if is_kelly:
+            tansho_entries = [
+                {"horses": [int(row["horse_no"])], "odds": float(row["odds"]) if pd.notna(row.get("odds")) else 100.0}
+                for _, row in race_df.iterrows()
+                if pd.notna(row.get("horse_no"))
+            ]
+            kelly_bets = predictor(model_variant).recommend_bets(
+                race_df, {"tansho": tansho_entries},
+                bankroll=budget, kelly_factor=0.25, min_ev=0.10, top_k=4,
+                ticket_types=["umaren", "umatan"],
+            )
+            _check_cancel()
+            if not kelly_bets:
+                no_bet += 1
+                _emit_sim_progress({
+                    "phase": "simulate",
+                    "current": index,
+                    "total": total_groups,
+                    "message": f"{date_text_for_progress} race_id={int(race_id)} はKelly対象買い目なしでスキップ ({index}/{len(groups)})",
+                })
+                continue
+            settle_bets = [
+                {"ticket_kind": b["ticket_kind"], "horses": b["horses"],
+                 "bet": b["bet_amount"], "odds_est": b["market_odds"]}
+                for b in kelly_bets
+            ]
+            total_b = sum(b["bet_amount"] for b in kelly_bets)
+            avg_ev = sum(b["ev"] for b in kelly_bets) / len(kelly_bets)
+            result = {
+                "bets": settle_bets,
+                "total_bet": total_b,
+                "n_tickets": len(kelly_bets),
+                "expected_roi": avg_ev,
+            }
+        else:
+            result = suggest(pred, budget=budget, style=style)
         _check_cancel()
         race_bet = int(result["total_bet"])
         if race_bet <= 0:
