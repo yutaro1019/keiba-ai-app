@@ -388,7 +388,7 @@ def main():
     print(f"   AUC={metrics['lgb_win_s7']:.4f}  Ensemble WIN AUC={metrics['ens_win_auc']:.4f}\n", flush=True)
     del m; gc.collect()
 
-    # 当たり率を計算（バイナリモデル）
+    # 的中率を計算（バイナリモデル）
     score_binary = 0.6 * ens_win + 0.4 * ens_top3
     hit_binary = eval_hit_rates(score_binary, g_va, y_va_rank)
     metrics.update({f"binary_{k}": v for k, v in hit_binary.items()})
