@@ -32,6 +32,7 @@ CACHE_DIR = os.path.join(BASE_DIR, "data", "current_races")
 PAYOUT_DIR = os.path.join(BASE_DIR, "data", "payouts")
 ODDS_DIR = os.path.join(BASE_DIR, "data", "odds")
 CACHE_VERSION = 5
+MIN_REASONABLE_RUNNERS = 5
 os.makedirs(CACHE_DIR, exist_ok=True)
 os.makedirs(PAYOUT_DIR, exist_ok=True)
 os.makedirs(ODDS_DIR, exist_ok=True)
@@ -169,6 +170,30 @@ def load_cache(race_id: int) -> Optional[RaceData]:
         rows=rows,
         cache_path=path,
         warnings=payload.get("warnings", []),
+    )
+
+
+def _race_date(meta: Dict[str, Any]) -> Optional[date]:
+    try:
+        value = meta.get("date")
+        if not value:
+            return None
+        return pd.to_datetime(str(value), errors="raise").date()
+    except Exception:
+        return None
+
+
+def _is_incomplete_current_or_future_race(race: RaceData) -> bool:
+    race_date = _race_date(race.meta or {})
+    if race_date is None or race_date < date.today():
+        return False
+    return len(race.rows) < MIN_REASONABLE_RUNNERS
+
+
+def _incomplete_race_message(row_count: int) -> str:
+    return (
+        f"出走表が未確定または取得不足です（取得{row_count}頭）。"
+        "出馬確定後に情報更新してから予想してください。"
     )
 
 
@@ -1374,6 +1399,9 @@ def scrape_race(source: str) -> RaceData:
     rows = parse_netkeiba_entries(soup, race_id, meta)
     rows = fill_odds_from_api(rows, race_id)
     rows = enrich_with_history(rows)
+    probe = RaceData(race_id=race_id, source_url=url, fetched_at="", meta=meta, rows=rows)
+    if _is_incomplete_current_or_future_race(probe):
+        raise ValueError(_incomplete_race_message(len(rows)))
     warnings = []
     matched = int(pd.to_numeric(rows.get("horse_runs"), errors="coerce").fillna(0).gt(0).sum()) if "horse_runs" in rows.columns else 0
     if matched < len(rows):
@@ -1410,6 +1438,8 @@ def load_or_scrape(source: str, force: bool = False) -> RaceData:
     if not force:
         cached = load_cache(race_id)
         if cached is not None:
+            if _is_incomplete_current_or_future_race(cached):
+                return scrape_race(source)
             missing = REQUIRED_HISTORY_FEATURES.difference(cached.rows.columns)
             if missing and "horse_id" in cached.rows.columns:
                 try:
