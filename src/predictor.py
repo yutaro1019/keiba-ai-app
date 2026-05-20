@@ -62,8 +62,14 @@ MODEL_VARIANTS = {
         "description": "グリッドサーチ最適解: 重要度上位50特徴量 × label_gain=[0,1,40]で1位的中率44.8%",
         "feature_engineering": "v10",
     },
+    "no_market_lambdarank_v3_g40_8_3_1": {
+        "label": "LambdaRank v3（総合推奨 / gain=40,8,3,1）",
+        "model_dir": os.path.join(MODEL_DIR, "no_market_lambdarank_v3_g40_8_3_1"),
+        "description": "2025年検証で通常買い目の回収率が最良。1着=40, 2着=8, 3着=3, 4着=1で上位候補も評価する総合モデル",
+        "feature_engineering": "v10",
+    },
 }
-DEFAULT_MODEL_VARIANT = "market"
+DEFAULT_MODEL_VARIANT = "no_market_lambdarank_v3_g40_8_3_1"
 
 
 def normalize_model_variant(model_variant=None):
