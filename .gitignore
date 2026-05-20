@@ -28,6 +28,9 @@ models_backup*/
 venv/
 env/
 
+# Claude memory files (session-local, not project code)
+src/memory/
+
 # Editor and OS files
 .vscode/
 .idea/

@@ -559,6 +559,7 @@ class KeibaPredictor:
         min_ev: float = 0.1,
         top_k: int = 4,
         ticket_types=None,
+        min_bet: int = 100,
     ) -> list:
         """
         LambdaRank v2 スコアとマーケットオッズからKelly基準で馬券推薦を返す。
@@ -612,7 +613,7 @@ class KeibaPredictor:
         )
         bets_raw = [b for b in bets_raw if b["ev"] >= min_ev]
         return size_bets(bets_raw, bankroll, kelly_factor,
-                         max_bet_frac=0.10, max_total_frac=0.20)
+                         max_bet_frac=0.10, max_total_frac=0.20, min_bet=min_bet)
 
 
 # ===========================================================

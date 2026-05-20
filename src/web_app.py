@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import gzip
+import hashlib
+import json
 import os
 import pickle
 import re
@@ -34,6 +37,7 @@ from race_scraper import (
 
 app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.json.ensure_ascii = False
 _predictors: Dict[str, KeibaPredictor] = {}
 VISIBLE_STYLE_KEYS = ("roi_focus", "hit_focus", "kelly_ai")
@@ -43,7 +47,9 @@ VISIBLE_STYLE_CONFIG["kelly_ai"] = {
     "desc": "LambdaRank v2 + Kelly基準。EV+10%以上の馬連・馬単のみ推薦。no_market_lambdarank_v2専用",
 }
 DEFAULT_STYLE = "roi_focus"
-VISIBLE_MODEL_KEYS = ("market", "no_market_lambdarank_v2")
+PRIMARY_MODEL_KEY = "no_market_lambdarank_v3_g40_8_3_1"
+KELLY_MODEL_KEY = "no_market_lambdarank_v2"
+VISIBLE_MODEL_KEYS = (PRIMARY_MODEL_KEY, KELLY_MODEL_KEY, "market")
 VISIBLE_MODEL_VARIANTS = {k: MODEL_VARIANTS[k] for k in VISIBLE_MODEL_KEYS}
 VENUE_OPTIONS = [(code, name) for code, name in sorted(VENUE_NAMES.items(), key=lambda item: int(item[0]))]
 UPDATE_JOBS: Dict[str, Dict] = {}
@@ -64,16 +70,355 @@ def force_utf8_response(response):
     return response
 
 
+KELLY_DEFAULT_BANKROLL = 100_000
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SIM_CACHE_DIR      = os.path.join(BASE_DIR, "data", "sim_cache")
+PIPELINE_CACHE_DIR = os.path.join(BASE_DIR, "data", "pipeline_cache")
+SCORE_CACHE_DIR    = os.path.join(BASE_DIR, "data", "score_cache")
+os.makedirs(SIM_CACHE_DIR,      exist_ok=True)
+os.makedirs(PIPELINE_CACHE_DIR, exist_ok=True)
+os.makedirs(SCORE_CACHE_DIR,    exist_ok=True)
+
+# スコアキャッシュに保存する列（特徴量は除き、シミュレーションに必要な列のみ）
+_SCORE_CACHE_COLS = [
+    "race_id", "date", "horse_no", "odds", "rank",
+    "score", "p_win", "p_top3", "pred_rank",
+    "horse_dist_top3_rate", "horse_top3_rate",
+]
+
+
+def _score_cache_path(model_variant: str) -> str:
+    return os.path.join(SCORE_CACHE_DIR, f"{model_variant}.pkl.gz")
+
+
+def _load_score_cache(model_variant: str):
+    """モデルスコアキャッシュを読み込む。データ更新後は無効。"""
+    path = _score_cache_path(model_variant)
+    if not os.path.exists(path):
+        return None
+    try:
+        if os.path.getmtime(path) >= os.path.getmtime(DATA_PKL):
+            with gzip.open(path, "rb") as f:
+                return pickle.load(f)
+    except Exception:
+        pass
+    return None
+
+
+def _save_score_cache(model_variant: str, df: "pd.DataFrame") -> None:
+    """予測スコア済みDataFrameを列を絞って保存する。"""
+    path = _score_cache_path(model_variant)
+    try:
+        cols = [c for c in _SCORE_CACHE_COLS if c in df.columns]
+        with gzip.open(path, "wb") as f:
+            pickle.dump(df[cols].reset_index(drop=True), f)
+    except Exception:
+        pass
+
+
+def _sim_cache_key(start_date, end_date, style, model_variant, budget, kelly_bankroll, min_confidence) -> str:
+    try:
+        data_mtime = int(os.path.getmtime(DATA_PKL))
+    except OSError:
+        data_mtime = 0
+    raw = f"{start_date}_{end_date}_{style}_{model_variant}_{budget}_{kelly_bankroll}_{min_confidence:.2f}_{data_mtime}"
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
+def _load_sim_cache(key: str):
+    path = os.path.join(SIM_CACHE_DIR, f"{key}.pkl")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    except Exception:
+        return None
+
+
+def _save_sim_cache(key: str, result: dict) -> None:
+    path = os.path.join(SIM_CACHE_DIR, f"{key}.pkl")
+    try:
+        with open(path, "wb") as f:
+            pickle.dump(result, f)
+    except Exception:
+        pass
+
+
+_SIM_CACHE_INDEX = os.path.join(SIM_CACHE_DIR, "index.json")
+_sim_index_lock = threading.Lock()
+
+
+def _save_sim_cache_meta(key: str, start_date: str, end_date: str, style: str,
+                          model_variant: str, budget: int, kelly_bankroll: int,
+                          min_confidence: float) -> None:
+    try:
+        data_mtime = int(os.path.getmtime(DATA_PKL))
+    except OSError:
+        data_mtime = 0
+    entry = {
+        "start_date": start_date, "end_date": end_date,
+        "style": style, "model_variant": model_variant,
+        "budget": budget, "kelly_bankroll": kelly_bankroll,
+        "min_confidence": round(min_confidence, 4), "data_mtime": data_mtime,
+    }
+    with _sim_index_lock:
+        try:
+            if os.path.exists(_SIM_CACHE_INDEX):
+                with open(_SIM_CACHE_INDEX, "r", encoding="utf-8") as f:
+                    index = json.load(f)
+            else:
+                index = {}
+            index[key] = entry
+            with open(_SIM_CACHE_INDEX, "w", encoding="utf-8") as f:
+                json.dump(index, f, ensure_ascii=False)
+        except Exception:
+            pass
+
+
+def _find_superset_cache(start_date: str, end_date: str, style: str, model_variant: str,
+                          budget: int, kelly_bankroll: int, min_confidence: float):
+    """同じ条件でより広い日付範囲のキャッシュを探す。見つかれば (key, meta) を返す。"""
+    if not os.path.exists(_SIM_CACHE_INDEX):
+        return None, None
+    try:
+        data_mtime = int(os.path.getmtime(DATA_PKL))
+    except OSError:
+        data_mtime = 0
+    req_start = parse_date(start_date)
+    req_end = parse_date(end_date)
+    if req_start is None or req_end is None:
+        return None, None
+    try:
+        with open(_SIM_CACHE_INDEX, "r", encoding="utf-8") as f:
+            index = json.load(f)
+    except Exception:
+        return None, None
+    for key, meta in index.items():
+        if (meta.get("style") == style and
+                meta.get("model_variant") == model_variant and
+                meta.get("budget") == budget and
+                meta.get("kelly_bankroll") == kelly_bankroll and
+                abs(meta.get("min_confidence", 0) - min_confidence) < 0.01 and
+                meta.get("data_mtime") == data_mtime):
+            cached_start = parse_date(meta.get("start_date", ""))
+            cached_end = parse_date(meta.get("end_date", ""))
+            if (cached_start is not None and cached_end is not None and
+                    cached_start <= req_start and cached_end >= req_end and
+                    (cached_start != req_start or cached_end != req_end)):
+                if os.path.exists(os.path.join(SIM_CACHE_DIR, f"{key}.pkl")):
+                    return key, meta
+    return None, None
+
+
+def _slice_sim_result(superset: dict, req_start, req_end) -> "Optional[dict]":
+    """スーパーセットのキャッシュから指定期間のサブセット結果を再集計する。"""
+    from datetime import date as _date
+    raw_rows = superset.get("_raw_rows")
+    raw_tested = superset.get("_raw_tested")
+    if raw_rows is None or raw_tested is None:
+        return None  # 古いキャッシュ形式
+
+    def _in_range(d_str):
+        try:
+            d = _date.fromisoformat(str(d_str)[:10])
+            return req_start <= d <= req_end
+        except Exception:
+            return False
+
+    rows = [r for r in raw_rows if _in_range(r["date"])]
+    tested_rows = [r for r in raw_tested if _in_range(r["date"])]
+
+    tested = len(tested_rows)
+    top1_win = sum(1 for r in tested_rows if r["top1_win"])
+    top1_top3 = sum(1 for r in tested_rows if r["top1_top3"])
+    top3_hit_sum = sum(r["top3_hits"] for r in tested_rows)
+    skipped_conf = sum(1 for r in tested_rows if r.get("skipped_conf"))
+    no_bet = sum(1 for r in tested_rows if r.get("no_bet"))
+
+    bought_races = len(rows)
+    hit_races = sum(1 for r in rows if r["payout"] > 0)
+    total_bet = sum(r["bet"] for r in rows)
+    total_payout = sum(r["payout"] for r in rows)
+    ticket_count = sum(r["tickets"] for r in rows)
+    ticket_hits = sum(r.get("ticket_hits", 0) for r in rows)
+    actual_payout_races = sum(1 for r in rows if r.get("payout_source") == "実払戻")
+
+    roi = total_payout / total_bet * 100 if total_bet else 0.0
+    profit = total_payout - total_bet
+    hit_rate = hit_races / bought_races * 100 if bought_races else 0.0
+    ticket_hit_rate = ticket_hits / ticket_count * 100 if ticket_count else 0.0
+    actual_payout_rate = actual_payout_races / bought_races * 100 if bought_races else 0.0
+
+    rows_by_payout = sorted(rows, key=lambda r: r["payout"], reverse=True)[:20]
+    rows_recent = sorted(rows, key=lambda r: (r["date"], r["race_id"]), reverse=True)[:80]
+
+    by_conf = []
+    if rows:
+        detail = pd.DataFrame(rows)
+        grouped = detail.groupby("conf_label").agg(
+            races=("race_id", "count"),
+            bet=("bet", "sum"),
+            payout=("payout", "sum"),
+            hits=("payout", lambda s: int((s > 0).sum())),
+        ).reset_index()
+        grouped["roi"] = grouped["payout"] / grouped["bet"] * 100
+        grouped["hit_rate"] = grouped["hits"] / grouped["races"] * 100
+        by_conf = grouped.sort_values("roi", ascending=False).to_dict(orient="records")
+
+    return {
+        "start_date": req_start.isoformat(),
+        "end_date": req_end.isoformat(),
+        "style": superset["style"],
+        "style_name": superset["style_name"],
+        "model_variant": superset["model_variant"],
+        "model_variant_label": superset["model_variant_label"],
+        "budget": superset["budget"],
+        "min_confidence": superset["min_confidence"],
+        "tested": tested,
+        "bought": bought_races,
+        "skipped_confidence": skipped_conf,
+        "no_bet": no_bet,
+        "hit_races": hit_races,
+        "hit_rate": hit_rate,
+        "ticket_count": ticket_count,
+        "ticket_hits": ticket_hits,
+        "ticket_hit_rate": ticket_hit_rate,
+        "total_bet": total_bet,
+        "total_payout": total_payout,
+        "profit": profit,
+        "roi": roi,
+        "avg_tickets": ticket_count / bought_races if bought_races else 0.0,
+        "top1_win_rate": top1_win / tested * 100 if tested else 0.0,
+        "top1_top3_rate": top1_top3 / tested * 100 if tested else 0.0,
+        "top3_hits_avg": top3_hit_sum / tested if tested else 0.0,
+        "top3_hit_rate": top3_hit_sum / (tested * 3) * 100 if tested else 0.0,
+        "top3_hit_fraction": f"{int(top3_hit_sum)}/{int(tested * 3)}" if tested else "0/0",
+        "actual_payout_races": actual_payout_races,
+        "actual_payout_rate": actual_payout_rate,
+        "payout_mode": superset.get("payout_mode", "実払戻優先"),
+        "top_payout_rows": rows_by_payout,
+        "recent_rows": rows_recent,
+        "by_conf": by_conf,
+        "_raw_rows": rows,
+        "_raw_tested": tested_rows,
+    }
+
+
+def _build_pipeline_df(model_variant: str, df_all: "pd.DataFrame", emit) -> "pd.DataFrame":
+    """
+    フルパイプラインで特徴量計算済みのDataFrameを返す。
+    data/pipeline_cache/<model_variant>.pkl.gz にキャッシュし、
+    processed_all.pkl.gz が更新されていなければキャッシュを再利用する。
+    """
+    cache_path = os.path.join(PIPELINE_CACHE_DIR, f"{model_variant}.pkl.gz")
+    if os.path.exists(cache_path):
+        try:
+            if os.path.getmtime(cache_path) >= os.path.getmtime(DATA_PKL):
+                emit({"phase": "model", "current": 0, "total": 1,
+                      "message": "パイプラインキャッシュをロード中..."})
+                with gzip.open(cache_path, "rb") as f:
+                    df = pickle.load(f)
+                emit({"phase": "model", "current": 1, "total": 1,
+                      "message": "パイプラインキャッシュ読み込み完了"})
+                return df
+        except Exception:
+            pass
+
+    meta_path = os.path.join(MODEL_VARIANTS[model_variant]["model_dir"], "meta.json")
+    with open(meta_path, encoding="utf-8") as _f:
+        fe = json.load(_f).get("feature_engineering", "")
+
+    df = df_all.copy()
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+
+    steps_v5 = []
+    if fe in ("v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11"):
+        from train_no_market_v5 import (
+            add_sire_features, add_horse_rolling_features, add_jockey_trainer_rolling,
+            add_field_strength, add_weight_trend, add_lap_rolling_features, add_field_pace_features,
+        )
+        steps_v5 = [
+            ("sire/class",    add_sire_features),
+            ("horse rolling", add_horse_rolling_features),
+            ("jockey/trainer",add_jockey_trainer_rolling),
+            ("field strength",add_field_strength),
+            ("weight trend",  add_weight_trend),
+            ("lap rolling",   add_lap_rolling_features),
+            ("field pace",    add_field_pace_features),
+        ]
+    for label, fn in steps_v5:
+        emit({"phase": "model", "current": 0, "total": 1, "message": f"特徴量構築中: {label}..."})
+        df = fn(df); gc.collect()
+
+    if fe in ("v6", "v7", "v8", "v9", "v10", "v11"):
+        from train_no_market_v6 import add_v6_features
+        emit({"phase": "model", "current": 0, "total": 1, "message": "特徴量構築中: v6..."})
+        df = add_v6_features(df); gc.collect()
+    if fe in ("v7", "v8", "v9", "v10", "v11"):
+        from train_no_market_v7 import add_v7_features
+        emit({"phase": "model", "current": 0, "total": 1, "message": "特徴量構築中: v7..."})
+        df = add_v7_features(df); gc.collect()
+    if fe in ("v8", "v9", "v10", "v11"):
+        from train_no_market_v8 import add_v8_features
+        emit({"phase": "model", "current": 0, "total": 1, "message": "特徴量構築中: v8..."})
+        df = add_v8_features(df); gc.collect()
+    if fe in ("v9", "v10", "v11"):
+        from train_no_market_v10 import add_v10_features
+        emit({"phase": "model", "current": 0, "total": 1, "message": "特徴量構築中: v10..."})
+        df = add_v10_features(df); gc.collect()
+    if fe in ("v11",):
+        from train_no_market_v11 import add_v11_features
+        emit({"phase": "model", "current": 0, "total": 1, "message": "特徴量構築中: v11..."})
+        df = add_v11_features(df); gc.collect()
+
+    from feature_engineering import add_model_features
+    emit({"phase": "model", "current": 0, "total": 1, "message": "特徴量構築中: vs_field..."})
+    df = add_model_features(df, race_col="race_id"); gc.collect()
+
+    # jockey-horse コンボ（lambdarank と同一ロジック）
+    emit({"phase": "model", "current": 0, "total": 1, "message": "特徴量構築中: jockey×horse combo..."})
+    df = df.sort_values(["date", "race_id"]).reset_index(drop=True)
+    df["_t"] = (df["rank"] <= 3).astype(float)
+    if "jockey_id" in df.columns and "horse_id" in df.columns:
+        grp = df.groupby(["jockey_id", "horse_id"], sort=False)
+        df["jh_top3_cum"] = grp["_t"].cumsum() - df["_t"]
+        df["jh_runs"]     = grp.cumcount().astype("float32")
+        df["jh_top3_rate"] = (df["jh_top3_cum"] / df["jh_runs"].replace(0, np.nan)).astype("float32")
+        df.drop(columns=["jh_top3_cum"], inplace=True)
+    df.drop(columns=["_t"], inplace=True)
+    gc.collect()
+
+    emit({"phase": "model", "current": 0, "total": 1, "message": "パイプラインキャッシュを保存中..."})
+    try:
+        with gzip.open(cache_path, "wb") as f:
+            pickle.dump(df, f)
+    except Exception:
+        pass
+    emit({"phase": "model", "current": 1, "total": 1, "message": "フルパイプライン構築完了（キャッシュ保存済み）"})
+    return df
+
+
+def _parse_kelly_bankroll(req=None) -> int:
+    src = req or request
+    try:
+        return max(1000, int(str(src.values.get("kelly_bankroll", KELLY_DEFAULT_BANKROLL)).replace(",", "")))
+    except (ValueError, TypeError):
+        return KELLY_DEFAULT_BANKROLL
+
+
 @app.context_processor
 def inject_form_options():
     return {
         "venue_options": VENUE_OPTIONS,
         "model_variants": VISIBLE_MODEL_VARIANTS,
         "selected_model_variant": normalize_visible_model(request.values.get("model_variant")),
+        "kelly_bankroll": _parse_kelly_bankroll(),
     }
 
 
-DEFAULT_MODEL_KEY = "market"
+DEFAULT_MODEL_KEY = PRIMARY_MODEL_KEY
 
 def normalize_style(style: str | None) -> str:
     return style if style in VISIBLE_STYLE_CONFIG else DEFAULT_STYLE
@@ -82,6 +427,12 @@ def normalize_style(style: str | None) -> str:
 def normalize_visible_model(model_variant: str | None) -> str:
     key = str(model_variant or DEFAULT_MODEL_KEY)
     return key if key in VISIBLE_MODEL_VARIANTS else DEFAULT_MODEL_KEY
+
+
+def effective_model_for_style(style: str | None, model_variant: str | None) -> str:
+    if normalize_style(style) == "kelly_ai":
+        return KELLY_MODEL_KEY
+    return normalize_visible_model(model_variant)
 
 
 def predictor(model_variant: str | None = None) -> KeibaPredictor:
@@ -295,6 +646,7 @@ def run_predict_day_job(
     model_variant: str,
     sort_mode: str,
     force_update: bool,
+    kelly_bankroll: int = KELLY_DEFAULT_BANKROLL,
 ):
     set_job_state(
         job_id,
@@ -321,6 +673,7 @@ def run_predict_day_job(
             force_update=force_update,
             progress=lambda payload: progress_to_job(job_id, payload),
             should_cancel=lambda: job_cancel_requested(job_id),
+            kelly_bankroll=kelly_bankroll,
         )
         raise_if_cancelled(job_id)
         set_job_state(
@@ -523,8 +876,8 @@ def allocation_label(style: str) -> str:
     return f"EV下限={min_ev:.2f}を超えた買い目に、分数ケリー基準で配分。"
 
 
-def prediction_payload_from_race(race, budget: int, style: str, model_variant: str = DEFAULT_MODEL_VARIANT) -> Dict:
-    model_variant = normalize_model_variant(model_variant)
+def prediction_payload_from_race(race, budget: int, style: str, model_variant: str = DEFAULT_MODEL_VARIANT, kelly_bankroll: int = KELLY_DEFAULT_BANKROLL) -> Dict:
+    model_variant = effective_model_for_style(style, model_variant)
     raw_pred = predictor(model_variant).predict_race(race.rows)
     rank_style = "smart" if style == "kelly_ai" else style
     pred = rank_for_style(raw_pred, rank_style)
@@ -592,7 +945,6 @@ def prediction_payload_from_race(race, budget: int, style: str, model_variant: s
                 for _, row in pred.iterrows()
                 if pd.notna(row.get("horse_no"))
             ]
-            kelly_bankroll = budget
             kelly_bets = predictor(model_variant).recommend_bets(
                 race.rows,
                 {"tansho": tansho_entries},
@@ -601,7 +953,17 @@ def prediction_payload_from_race(race, budget: int, style: str, model_variant: s
                 min_ev=0.10,
                 top_k=4,
                 ticket_types=["umaren", "umatan"],
+                min_bet=100,
             )
+            # 予算上限を超える場合は比例縮小
+            total_kelly = sum(b["bet_amount"] for b in kelly_bets)
+            if total_kelly > budget:
+                scale = budget / total_kelly
+                kelly_bets = [
+                    {**b, "bet_amount": int(b["bet_amount"] * scale / 100) * 100}
+                    for b in kelly_bets
+                    if int(b["bet_amount"] * scale / 100) * 100 >= 100
+                ]
         except Exception:
             kelly_bets = []
 
@@ -659,6 +1021,7 @@ def predict_selected_race_payload(
     style: str,
     model_variant: str,
     force_update: bool,
+    kelly_bankroll: int = KELLY_DEFAULT_BANKROLL,
 ) -> Dict:
     target_date = parse_date(kaisai_date)
     if target_date is None:
@@ -694,7 +1057,7 @@ def predict_selected_race_payload(
         )
 
     race = load_or_scrape(str(matched[0]), force=force_update)
-    payload = prediction_payload_from_race(race, budget, style, model_variant)
+    payload = prediction_payload_from_race(race, budget, style, model_variant, kelly_bankroll=kelly_bankroll)
     notices = [payload["warning"]] if payload.get("warning") else []
     return {
         "date": target_date.isoformat(),
@@ -720,6 +1083,7 @@ def predict_day_payload(
     force_update: bool,
     progress: Optional[Callable[[Dict], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
+    kelly_bankroll: int = KELLY_DEFAULT_BANKROLL,
 ) -> Dict:
     def _check_cancel():
         if should_cancel is not None and should_cancel():
@@ -765,7 +1129,7 @@ def predict_day_payload(
         try:
             race = load_or_scrape(str(race_id), force=force_update)
             _check_cancel()
-            payload = prediction_payload_from_race(race, budget, style, model_variant)
+            payload = prediction_payload_from_race(race, budget, style, model_variant, kelly_bankroll=kelly_bankroll)
             _check_cancel()
             if payload.get("warning") and payload["warning"] not in notices:
                 notices.append(payload["warning"])
@@ -824,6 +1188,7 @@ def simulate_period(
     min_confidence: float,
     progress: Optional[Callable[[Dict], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
+    kelly_bankroll: int = KELLY_DEFAULT_BANKROLL,
 ) -> Dict:
     def _check_cancel():
         if should_cancel is not None and should_cancel():
@@ -837,38 +1202,124 @@ def simulate_period(
     if start > end:
         start, end = end, start
 
-    with gzip.open(DATA_PKL, "rb") as f:
-        df = pickle.load(f)
-
-    dates = pd.to_datetime(df["date"], errors="coerce").dt.date
-    sim_df = df[(dates >= start) & (dates <= end)].copy()
-    if sim_df.empty:
-        raise ValueError("指定期間のデータがありません。")
-
-    if "rank" in sim_df.columns:
-        sim_df = sim_df[sim_df["rank"].notna()].copy()
-    if sim_df.empty:
-        raise ValueError("有効な結果付きデータがありません。")
-
-    sim_df = sim_df.sort_values(["date", "race_id"]).reset_index(drop=True)
-    base_groups = [(race_id, race_df.reset_index(drop=True)) for race_id, race_df in sim_df.groupby("race_id", sort=False)]
     _emit_sim_progress = progress or (lambda payload: None)
+
+    # ── シミュレーション結果キャッシュ ──────────────────────────────────
+    model_variant = effective_model_for_style(style, model_variant)
+    cache_key = _sim_cache_key(start_date, end_date, style, model_variant, budget, kelly_bankroll, min_confidence)
+    cached = _load_sim_cache(cache_key)
+    if cached is not None:
+        _emit_sim_progress({"phase": "simulate", "current": 1, "total": 1,
+                            "message": "キャッシュから結果を読み込みました（即座に表示）"})
+        return cached
+
+    # スーパーセットキャッシュ（より広い期間）から部分取得
+    sup_key, _ = _find_superset_cache(start_date, end_date, style, model_variant, budget, kelly_bankroll, min_confidence)
+    if sup_key is not None:
+        sup_cached = _load_sim_cache(sup_key)
+        if sup_cached is not None:
+            sliced = _slice_sim_result(sup_cached, start, end)
+            if sliced is not None:
+                _save_sim_cache(cache_key, sliced)
+                _save_sim_cache_meta(cache_key, start.isoformat(), end.isoformat(),
+                                     style, model_variant, budget, kelly_bankroll, min_confidence)
+                _emit_sim_progress({"phase": "simulate", "current": 1, "total": 1,
+                                    "message": "既存キャッシュから期間を絞り込んで表示（即座に表示）"})
+                return sliced
+
+    # ── データロード ────────────────────────────────────────────────────
+    _emit_sim_progress({"phase": "model", "current": 0, "total": 1, "message": "データをロード中..."})
+    with gzip.open(DATA_PKL, "rb") as f:
+        df_all = pickle.load(f)
+    df_all["date"] = pd.to_datetime(df_all["date"], errors="coerce")
+
+    pred_model = predictor(model_variant)
+
+    if pred_model.model_type == "lambdarank":
+        # ── スコアキャッシュ確認（最優先）─────────────────────────────────
+        scored_all = _load_score_cache(model_variant)
+        if scored_all is not None:
+            _emit_sim_progress({"phase": "model", "current": 1, "total": 1,
+                                "message": "スコアキャッシュをロード中..."})
+            scored_all["date"] = pd.to_datetime(scored_all["date"], errors="coerce")
+        else:
+            # ── フルパイプライン（訓練時と同じ特徴量、キャッシュ利用）──────────
+            df_pipeline = _build_pipeline_df(model_variant, df_all, _emit_sim_progress)
+            _check_cancel()
+
+            df_all_pipe = df_pipeline.copy()
+            df_all_pipe = df_all_pipe[df_all_pipe["rank"].notna()].copy() if "rank" in df_all_pipe.columns else df_all_pipe
+            df_all_pipe = df_all_pipe.sort_values(["date", "race_id"]).reset_index(drop=True)
+
+            _emit_sim_progress({"phase": "model", "current": 0, "total": 1,
+                                "message": f"全データ {df_all_pipe['race_id'].nunique()}R を一括AI予測します..."})
+            feats = pred_model.feats
+            X_all = df_all_pipe.reindex(columns=feats)
+            raw_all = np.mean(
+                [m.predict(X_all, num_iteration=m.best_iteration) for m in pred_model.lr_models], axis=0
+            )
+            df_all_pipe = df_all_pipe.copy()
+            df_all_pipe["_raw"] = raw_all
+
+            def _sm(g):
+                e = np.exp(g["_raw"] - g["_raw"].max()); return e / e.sum()
+            df_all_pipe["score"]    = df_all_pipe.groupby("race_id", group_keys=False).apply(_sm)
+            df_all_pipe["p_win"]    = np.clip(df_all_pipe["score"], 1e-6, 0.999)
+            df_all_pipe["p_top3"]   = np.clip(df_all_pipe["score"] * 3.0, 1e-6, 0.999)
+            df_all_pipe["pred_rank"] = df_all_pipe.groupby("race_id")["score"].rank(
+                ascending=False, method="min").astype(int)
+            df_all_pipe.drop(columns=["_raw"], inplace=True, errors="ignore")
+
+            _emit_sim_progress({"phase": "model", "current": 0, "total": 1,
+                                "message": "スコアキャッシュを保存中..."})
+            _save_score_cache(model_variant, df_all_pipe)
+            scored_all = _load_score_cache(model_variant)
+            if scored_all is None:
+                scored_all = df_all_pipe[[c for c in _SCORE_CACHE_COLS if c in df_all_pipe.columns]].copy()
+            scored_all["date"] = pd.to_datetime(scored_all["date"], errors="coerce")
+            gc.collect()
+
+        _check_cancel()
+        mask = (scored_all["date"].dt.date >= start) & (scored_all["date"].dt.date <= end)
+        sim_df = scored_all[mask].copy()
+        if sim_df.empty:
+            raise ValueError("指定期間のデータがありません。")
+        sim_df = sim_df.sort_values(["date", "race_id"]).reset_index(drop=True)
+        predicted_all = sim_df
+    else:
+        # ── 従来の predict_frame (lookup テーブル) ──────────────────────
+        # スコアキャッシュ確認
+        scored_all = _load_score_cache(model_variant)
+        if scored_all is not None:
+            _emit_sim_progress({"phase": "model", "current": 1, "total": 1,
+                                "message": "スコアキャッシュをロード中..."})
+            scored_all["date"] = pd.to_datetime(scored_all["date"], errors="coerce")
+            mask = (scored_all["date"].dt.date >= start) & (scored_all["date"].dt.date <= end)
+            sim_df = scored_all[mask].copy()
+            if sim_df.empty:
+                raise ValueError("指定期間のデータがありません。")
+            predicted_all = sim_df.sort_values(["date", "race_id"]).reset_index(drop=True)
+        else:
+            dates = df_all["date"].dt.date
+            sim_df = df_all[(dates >= start) & (dates <= end)].copy()
+            if sim_df.empty:
+                raise ValueError("指定期間のデータがありません。")
+            if "rank" in sim_df.columns:
+                sim_df = sim_df[sim_df["rank"].notna()].copy()
+            if sim_df.empty:
+                raise ValueError("有効な結果付きデータがありません。")
+            sim_df = sim_df.sort_values(["date", "race_id"]).reset_index(drop=True)
+            _emit_sim_progress({"phase": "model", "current": 0, "total": 1,
+                                "message": f"{sim_df['race_id'].nunique()}R分をまとめてAI予測します"})
+            all_df = df_all[df_all["rank"].notna()].copy() if "rank" in df_all.columns else df_all.copy()
+            all_df = all_df.sort_values(["date", "race_id"]).reset_index(drop=True)
+            predicted_full = predictor(model_variant).predict_frame(all_df)
+            _save_score_cache(model_variant, predicted_full)
+            dates2 = pd.to_datetime(predicted_full["date"], errors="coerce").dt.date
+            predicted_all = predicted_full[(dates2 >= start) & (dates2 <= end)].copy()
+
     _check_cancel()
-    _emit_sim_progress({
-        "phase": "model",
-        "current": 0,
-        "total": 1,
-        "message": f"{len(base_groups)}R分をまとめてAI予測します",
-    })
-    model_variant = normalize_model_variant(model_variant)
-    predicted_all = predictor(model_variant).predict_frame(sim_df)
-    _check_cancel()
-    _emit_sim_progress({
-        "phase": "model",
-        "current": 1,
-        "total": 1,
-        "message": "AI予測を一括完了しました",
-    })
+    _emit_sim_progress({"phase": "model", "current": 1, "total": 1, "message": "AI予測を一括完了しました"})
     groups = [(race_id, race_df.reset_index(drop=True)) for race_id, race_df in predicted_all.groupby("race_id", sort=False)]
     _emit_sim_progress({
         "phase": "simulate",
@@ -891,6 +1342,7 @@ def simulate_period(
     tested = 0
     actual_payout_races = 0
     rows = []
+    tested_rows_data = []
 
     total_groups = max(1, len(groups))
     for index, (race_id, race_df) in enumerate(groups, start=1):
@@ -926,9 +1378,14 @@ def simulate_period(
         actual_top3 = set(pred[pred["rank"] <= 3]["horse_no"].astype(int))
         top3_hits = len(pred_top3 & actual_top3)
         top3_hit_sum += top3_hits
+        _t = {"race_id": int(race_id), "date": date_text_for_progress,
+              "top1_win": int(top["rank"]) == 1, "top1_top3": int(top["rank"]) <= 3,
+              "top3_hits": top3_hits, "skipped_conf": False, "no_bet": False}
 
         if not is_kelly and conf["score"] < min_confidence:
             skipped_conf += 1
+            _t["skipped_conf"] = True
+            tested_rows_data.append(_t)
             _emit_sim_progress({
                 "phase": "simulate",
                 "current": index,
@@ -938,19 +1395,50 @@ def simulate_period(
             continue
 
         if is_kelly:
-            tansho_entries = [
-                {"horses": [int(row["horse_no"])], "odds": float(row["odds"]) if pd.notna(row.get("odds")) else 100.0}
-                for _, row in race_df.iterrows()
-                if pd.notna(row.get("horse_no"))
-            ]
-            kelly_bets = predictor(model_variant).recommend_bets(
-                race_df, {"tansho": tansho_entries},
-                bankroll=budget, kelly_factor=0.25, min_ev=0.10, top_k=4,
-                ticket_types=["umaren", "umatan"],
-            )
+            if pred_model.model_type == "lambdarank":
+                # フルパイプラインのスコアを直接使用（lookup テーブルなし）
+                from kelly_betting import enumerate_race_bets, size_bets, market_probs_from_odds
+                h_rows = [
+                    (int(row["horse_no"]),
+                     float(row["odds"]) if pd.notna(row.get("odds")) else 100.0,
+                     float(row.get("score", 0.0)))
+                    for _, row in race_df.iterrows() if pd.notna(row.get("horse_no"))
+                ]
+                horse_nos      = [h for h, _, _ in h_rows]
+                tansho_odds_arr = np.array([o for _, o, _ in h_rows])
+                model_probs    = np.array([s for _, _, s in h_rows])
+                market_probs   = market_probs_from_odds(tansho_odds_arr)
+                bets_raw = enumerate_race_bets(
+                    model_probs, market_probs, horse_nos, tansho_odds_arr,
+                    ticket_types=["umaren", "umatan"], top_k=4,
+                )
+                bets_raw   = [b for b in bets_raw if b["ev"] >= 0.10]
+                kelly_bets = size_bets(bets_raw, kelly_bankroll, kelly_factor=0.25, min_bet=100)
+            else:
+                tansho_entries = [
+                    {"horses": [int(row["horse_no"])], "odds": float(row["odds"]) if pd.notna(row.get("odds")) else 100.0}
+                    for _, row in race_df.iterrows()
+                    if pd.notna(row.get("horse_no"))
+                ]
+                kelly_bets = predictor(model_variant).recommend_bets(
+                    race_df, {"tansho": tansho_entries},
+                    bankroll=kelly_bankroll, kelly_factor=0.25, min_ev=0.10, top_k=4,
+                    ticket_types=["umaren", "umatan"], min_bet=100,
+                )
+            # 予算上限を超える場合は比例縮小
+            total_kelly = sum(b["bet_amount"] for b in kelly_bets)
+            if total_kelly > budget:
+                scale = budget / total_kelly
+                kelly_bets = [
+                    {**b, "bet_amount": int(b["bet_amount"] * scale / 100) * 100}
+                    for b in kelly_bets
+                    if int(b["bet_amount"] * scale / 100) * 100 >= 100
+                ]
             _check_cancel()
             if not kelly_bets:
                 no_bet += 1
+                _t["no_bet"] = True
+                tested_rows_data.append(_t)
                 _emit_sim_progress({
                     "phase": "simulate",
                     "current": index,
@@ -977,6 +1465,8 @@ def simulate_period(
         race_bet = int(result["total_bet"])
         if race_bet <= 0:
             no_bet += 1
+            _t["no_bet"] = True
+            tested_rows_data.append(_t)
             _emit_sim_progress({
                 "phase": "simulate",
                 "current": index,
@@ -998,6 +1488,7 @@ def simulate_period(
         ticket_hits += race_ticket_hits
 
         date_text = str(race_df["date"].iloc[0])[:10]
+        tested_rows_data.append(_t)
         rows.append({
             "race_id": int(race_id),
             "date": date_text,
@@ -1008,6 +1499,7 @@ def simulate_period(
             "profit": race_payout - race_bet,
             "roi": race_payout / race_bet * 100 if race_bet else 0.0,
             "tickets": int(result["n_tickets"]),
+            "ticket_hits": race_ticket_hits,
             "expected_roi": float(result["expected_roi"]) * 100,
             "top_horse_no": int(top["horse_no"]) if pd.notna(top.get("horse_no")) else "",
             "top_win": float(top["p_win"]) * 100,
@@ -1046,11 +1538,11 @@ def simulate_period(
         grouped["hit_rate"] = grouped["hits"] / grouped["races"] * 100
         by_conf = grouped.sort_values("roi", ascending=False).to_dict(orient="records")
 
-    return {
+    result = {
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
         "style": style,
-        "style_name": VISIBLE_STYLE_CONFIG[style]["name"],
+        "style_name": (VISIBLE_STYLE_CONFIG.get(style) or STYLE_CONFIG.get(style, {})).get("name", style),
         "model_variant": model_variant,
         "model_variant_label": MODEL_VARIANTS[model_variant]["label"],
         "budget": budget,
@@ -1080,7 +1572,13 @@ def simulate_period(
         "top_payout_rows": rows_by_payout,
         "recent_rows": rows_recent,
         "by_conf": by_conf,
+        "_raw_rows": rows,
+        "_raw_tested": tested_rows_data,
     }
+    _save_sim_cache(cache_key, result)
+    _save_sim_cache_meta(cache_key, start.isoformat(), end.isoformat(),
+                         style, model_variant, budget, kelly_bankroll, min_confidence)
+    return result
 
 
 @app.get("/")
@@ -1103,7 +1601,7 @@ def index():
 @app.post("/predict-day")
 def predict_day_route():
     style = normalize_style(request.form.get("style", DEFAULT_STYLE))
-    model_variant = normalize_visible_model(request.form.get("model_variant"))
+    model_variant = effective_model_for_style(style, request.form.get("model_variant"))
     sort_mode = request.form.get("sort_mode", "race")
     try:
         budget = int(str(request.form.get("budget", "3000")).replace(",", ""))
@@ -1111,8 +1609,10 @@ def predict_day_route():
         budget = 3000
     force_update = request.form.get("force_update") == "on"
     kaisai_date = request.form.get("kaisai_date", "")
+    kelly_bankroll = _parse_kelly_bankroll()
     try:
-        day_result = predict_day_payload(kaisai_date, budget, style, model_variant, sort_mode, force_update)
+        day_result = predict_day_payload(kaisai_date, budget, style, model_variant, sort_mode, force_update,
+                                         kelly_bankroll=kelly_bankroll)
         error = None
     except Exception as exc:
         day_result = None
@@ -1136,7 +1636,7 @@ def predict_day_route():
 @app.post("/predict-race")
 def predict_race_select_route():
     style = normalize_style(request.form.get("style", DEFAULT_STYLE))
-    model_variant = normalize_visible_model(request.form.get("model_variant"))
+    model_variant = effective_model_for_style(style, request.form.get("model_variant"))
     try:
         budget = int(str(request.form.get("budget", "3000")).replace(",", ""))
     except ValueError:
@@ -1145,6 +1645,7 @@ def predict_race_select_route():
     kaisai_date = request.form.get("kaisai_date", "")
     venue_code = request.form.get("venue_code", "")
     round_no = request.form.get("round_no", "")
+    kelly_bankroll = _parse_kelly_bankroll()
     try:
         day_result = predict_selected_race_payload(
             kaisai_date=kaisai_date,
@@ -1154,6 +1655,7 @@ def predict_race_select_route():
             style=style,
             model_variant=model_variant,
             force_update=force_update,
+            kelly_bankroll=kelly_bankroll,
         )
         error = None
     except Exception as exc:
@@ -1179,7 +1681,7 @@ def predict_race_select_route():
 def api_predict_day_start():
     data = request.get_json(silent=True) or request.form
     style = normalize_style(str(data.get("style", DEFAULT_STYLE)))
-    model_variant = normalize_visible_model(str(data.get("model_variant", DEFAULT_MODEL_KEY)))
+    model_variant = effective_model_for_style(style, str(data.get("model_variant", DEFAULT_MODEL_KEY)))
     sort_mode = str(data.get("sort_mode", "race") or "race")
     try:
         budget = int(str(data.get("budget", "3000")).replace(",", ""))
@@ -1187,6 +1689,10 @@ def api_predict_day_start():
         budget = 3000
     force_update = data.get("force_update") == "on" or str(data.get("force_update", "")).lower() == "true"
     kaisai_date = str(data.get("kaisai_date", ""))
+    try:
+        kelly_bankroll = max(1000, int(str(data.get("kelly_bankroll", KELLY_DEFAULT_BANKROLL)).replace(",", "")))
+    except (ValueError, TypeError):
+        kelly_bankroll = KELLY_DEFAULT_BANKROLL
 
     job_id = uuid.uuid4().hex
     set_job_state(
@@ -1204,7 +1710,7 @@ def api_predict_day_start():
     )
     thread = threading.Thread(
         target=run_predict_day_job,
-        args=(job_id, kaisai_date, max(100, budget), style, model_variant, sort_mode, force_update),
+        args=(job_id, kaisai_date, max(100, budget), style, model_variant, sort_mode, force_update, kelly_bankroll),
         daemon=True,
     )
     thread.start()
@@ -1265,7 +1771,7 @@ def predict_day_result_route(job_id: str):
 @app.post("/simulate")
 def simulate_route():
     style = normalize_style(request.form.get("style", DEFAULT_STYLE))
-    model_variant = normalize_visible_model(request.form.get("model_variant"))
+    model_variant = effective_model_for_style(style, request.form.get("model_variant"))
     try:
         budget = int(str(request.form.get("budget", "3000")).replace(",", ""))
     except ValueError:
@@ -1275,6 +1781,7 @@ def simulate_route():
     except ValueError:
         min_conf = float(STYLE_CONFIG.get(style, {}).get("default_min_confidence", 0.0))
 
+    kelly_bankroll = _parse_kelly_bankroll()
     try:
         sim_result = simulate_period(
             start_date=request.form.get("sim_start", ""),
@@ -1283,6 +1790,7 @@ def simulate_route():
             style=style,
             model_variant=model_variant,
             min_confidence=min_conf,
+            kelly_bankroll=kelly_bankroll,
         )
         error = None
     except Exception as exc:
@@ -1309,7 +1817,7 @@ def simulate_route():
 def api_simulate_start():
     data = request.get_json(silent=True) or request.form
     style = normalize_style(str(data.get("style", DEFAULT_STYLE)))
-    model_variant = normalize_visible_model(str(data.get("model_variant", DEFAULT_MODEL_KEY)))
+    model_variant = effective_model_for_style(style, str(data.get("model_variant", DEFAULT_MODEL_KEY)))
     try:
         budget = int(str(data.get("budget", "3000")).replace(",", ""))
     except ValueError:

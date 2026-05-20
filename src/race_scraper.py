@@ -31,11 +31,13 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CACHE_DIR = os.path.join(BASE_DIR, "data", "current_races")
 PAYOUT_DIR = os.path.join(BASE_DIR, "data", "payouts")
 ODDS_DIR = os.path.join(BASE_DIR, "data", "odds")
+PEDIGREE_CACHE_DIR = os.path.join(BASE_DIR, "data", "pedigree_cache")
 CACHE_VERSION = 5
 MIN_REASONABLE_RUNNERS = 5
 os.makedirs(CACHE_DIR, exist_ok=True)
 os.makedirs(PAYOUT_DIR, exist_ok=True)
 os.makedirs(ODDS_DIR, exist_ok=True)
+os.makedirs(PEDIGREE_CACHE_DIR, exist_ok=True)
 
 REQUIRED_HISTORY_FEATURES = {
     "horse_dist_top3_rate", "horse_surface_top3_rate",
@@ -853,6 +855,136 @@ def load_odds_cache(race_id: int) -> Optional[Dict[str, Any]]:
         return json.load(f)
 
 
+# ── 血統キャッシュ ────────────────────────────────────────────────────────
+
+def _pedigree_cache_path(horse_id: int) -> str:
+    return os.path.join(PEDIGREE_CACHE_DIR, f"{int(horse_id)}.json")
+
+
+def _load_pedigree_cache(horse_id: int) -> Optional[Dict[str, Any]]:
+    path = _pedigree_cache_path(horse_id)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _save_pedigree_cache(horse_id: int, data: Dict[str, Any]) -> None:
+    path = _pedigree_cache_path(horse_id)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def _parse_pedigree_cell(td) -> Optional[str]:
+    """
+    血統テーブルのセルから馬名を取り出す。
+    preprocess.py の extract_first_word と同じロジックで学習データの名前形式に揃える。
+    """
+    if td is None:
+        return None
+    a = td.find("a")
+    text = a.get_text(strip=True) if a else td.get_text(strip=True)
+    if not text:
+        return None
+    # preprocess.py の extract_first_word と同じ処理
+    s = text.split("(")[0].split("[")[0]
+    s = re.split(r"\s+", s.strip())[0]
+    return s if s else None
+
+
+def scrape_horse_pedigree(horse_id: int) -> Dict[str, Optional[str]]:
+    """
+    netkeibaの血統ページから父(sire)と母父(broodmare_sire)を取得する。
+    URL: https://db.netkeiba.com/?pid=horse_pedigree&id=<horse_id>
+    取得結果は data/pedigree_cache/<horse_id>.json にキャッシュする。
+    """
+    cached = _load_pedigree_cache(horse_id)
+    if cached is not None:
+        return cached
+
+    url = f"https://db.netkeiba.com/?pid=horse_pedigree&id={int(horse_id)}"
+    try:
+        html = fetch_html(url)
+        soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        return {"sire": None, "broodmare_sire": None}
+
+    sire = None
+    broodmare_sire = None
+
+    table = soup.find("table", class_="blood_table")
+    if table:
+        rows = table.find_all("tr")
+        n = len(rows)
+        if n >= 4:
+            mid = n // 2  # 5世代 = 32行 → mid=16、4世代 = 16行 → mid=8
+
+            # 父: row[0] の1列目（最大 rowspan のセル）
+            r0_tds = rows[0].find_all("td", recursive=False)
+            if r0_tds:
+                sire = _parse_pedigree_cell(r0_tds[0])
+
+            # 母父: row[mid] の2列目（母の行の2列目 = 母の父）
+            r_mid_tds = rows[mid].find_all("td", recursive=False) if mid < n else []
+            if len(r_mid_tds) >= 2:
+                broodmare_sire = _parse_pedigree_cell(r_mid_tds[1])
+
+    result: Dict[str, Optional[str]] = {"sire": sire, "broodmare_sire": broodmare_sire}
+    _save_pedigree_cache(horse_id, result)
+    time.sleep(0.5)
+    return result
+
+
+def _enrich_pedigree_from_web(
+    result_rows: pd.DataFrame,
+    progress: Optional[Callable[[Dict[str, Any]], None]] = None,
+) -> pd.DataFrame:
+    """sire / broodmare_sire が NaN の馬について netkeiba から血統を補完する。"""
+    out = result_rows.copy()
+    if "horse_id" not in out.columns:
+        return out
+
+    for col in ("sire", "broodmare_sire"):
+        if col not in out.columns:
+            out[col] = np.nan
+
+    missing_mask = (out["sire"].isna() | out["broodmare_sire"].isna()) & out["horse_id"].notna()
+    missing_ids = out.loc[missing_mask, "horse_id"].dropna().unique()
+
+    if len(missing_ids) == 0:
+        return out
+
+    _emit_progress(progress, phase="pedigree", current=0, total=int(len(missing_ids)),
+                   message=f"血統不明 {len(missing_ids)}頭 を netkeiba から取得します")
+
+    ped_map: Dict[Any, Dict[str, Optional[str]]] = {}
+    for i, hid in enumerate(missing_ids, 1):
+        try:
+            ped_map[hid] = scrape_horse_pedigree(int(hid))
+        except Exception:
+            ped_map[hid] = {"sire": None, "broodmare_sire": None}
+        _emit_progress(progress, phase="pedigree", current=i, total=int(len(missing_ids)),
+                       message=f"horse_id={int(hid)} 血統取得 ({i}/{len(missing_ids)})")
+
+    for col in ("sire", "broodmare_sire"):
+        def _fill(row, c=col):
+            if pd.notna(row[c]):
+                return row[c]
+            hid = row.get("horse_id")
+            if pd.isna(hid) or hid not in ped_map:
+                return row[c]
+            return ped_map[hid].get(c) or row[c]
+        out[col] = out.apply(_fill, axis=1)
+
+    return out
+
+
 def actual_odds_multiplier(payload: Optional[Dict[str, Any]], kind: str, horses: Iterable[int]) -> Optional[float]:
     if not payload:
         return None
@@ -1292,9 +1424,28 @@ def _future_feature_row(row: pd.Series, horse_hist: pd.DataFrame, hist_before: p
             rec[f"horse_passing_last_rate_lag{lag}"] = (passing_last - 1) / denom if pd.notna(denom) and pd.notna(passing_last) else np.nan
             rec[f"horse_passing_gain_lag{lag}"] = passing_first - passing_last if pd.notna(passing_first) and pd.notna(passing_last) else np.nan
             rec[f"horse_distance_diff_lag{lag}"] = current_distance - prev_distance if pd.notna(current_distance) and pd.notna(prev_distance) else np.nan
+
+            # 前走フィールド内の上がり3Fパーセンタイル（0=最速, 1=最遅）
+            # add_v6_features と同一ロジック: hist_before から前走race_idで全馬のagariを取得
+            horse_agari = rec[f"horse_agari_lag{lag}"]
+            prev_race_id = prev.get("race_id")
+            agari_rank_pct = np.nan
+            if (
+                pd.notna(horse_agari)
+                and prev_race_id is not None
+                and "race_id" in hist_before.columns
+                and "agari" in hist_before.columns
+            ):
+                prev_field = hist_before[hist_before["race_id"] == prev_race_id]
+                field_agari = pd.to_numeric(prev_field["agari"], errors="coerce").dropna()
+                n = len(field_agari)
+                if n > 1:
+                    rank = int((field_agari < horse_agari).sum()) + 1  # 1=最速
+                    agari_rank_pct = float(np.clip((rank - 1) / (n - 1), 0.0, 1.0))
+            rec[f"horse_agari_rank_pct_lag{lag}"] = agari_rank_pct
         else:
             for col in (
-                "rank", "time_idx", "agari", "passing_first", "passing_last",
+                "rank", "time_idx", "agari", "agari_rank_pct", "passing_first", "passing_last",
                 "field_size", "distance", "passing_first_rate", "passing_last_rate",
                 "passing_gain", "distance_diff",
             ):
@@ -1518,7 +1669,10 @@ def _fill_pedigree_from_history(new_rows: pd.DataFrame, hist: pd.DataFrame) -> p
     return out
 
 
-def append_results_to_processed(result_rows: pd.DataFrame) -> Dict[str, Any]:
+def append_results_to_processed(
+    result_rows: pd.DataFrame,
+    progress: Optional[Callable[[Dict[str, Any]], None]] = None,
+) -> Dict[str, Any]:
     if result_rows.empty:
         return {"rows_added": 0, "races_added": 0, "backup_path": "", "saved_path": DATA_PKL}
 
@@ -1531,6 +1685,7 @@ def append_results_to_processed(result_rows: pd.DataFrame) -> Dict[str, Any]:
         return {"rows_added": 0, "races_added": 0, "backup_path": "", "saved_path": DATA_PKL}
 
     result_rows = _fill_pedigree_from_history(result_rows, hist)
+    result_rows = _enrich_pedigree_from_web(result_rows, progress=progress)
     history_cols = _history_feature_columns(hist.columns)
     base_cols = [c for c in hist.columns if c not in history_cols]
 
@@ -1868,7 +2023,9 @@ def auto_update_missing(
             total=1,
             message="学習データを再構築して保存します",
         )
-        dataset_update = append_results_to_processed(pd.concat(result_frames, ignore_index=True))
+        dataset_update = append_results_to_processed(
+            pd.concat(result_frames, ignore_index=True), progress=progress
+        )
         _emit_progress(
             progress,
             phase="save",

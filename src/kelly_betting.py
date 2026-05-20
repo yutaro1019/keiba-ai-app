@@ -670,14 +670,19 @@ def size_bets(
     kelly_factor: float = 0.25,
     max_bet_frac: float = 0.10,
     max_total_frac: float = 0.20,
+    min_bet: int = 100,
 ) -> List[Dict]:
-    """Kelly係数から掛け金を決定し bet_amount を付与して返す。"""
+    """Kelly係数から掛け金を決定し bet_amount を付与して返す。
+
+    min_bet: この金額未満になるベットはスキップする（デフォルト100円）。
+             例: min_bet=300 なら100〜299円になるベットは出力しない。
+    """
     sized = []
     for b in bets:
         raw = b["kelly"] * kelly_factor
         capped = min(raw, max_bet_frac)
         amount = int(bankroll * capped / 100) * 100
-        if amount >= 100:
+        if amount >= min_bet:
             sized.append({**b, "bet_amount": amount})
 
     if not sized:
@@ -688,11 +693,9 @@ def size_bets(
     if total > max_total:
         scale = max_total / total
         sized_scaled = []
-        for b in bets:
-            raw = b["kelly"] * kelly_factor
-            capped = min(raw, max_bet_frac)
-            amount = int(bankroll * capped * scale / 100) * 100
-            if amount >= 100:
+        for b in sized:
+            amount = int(b["bet_amount"] * scale / 100) * 100
+            if amount >= min_bet:
                 sized_scaled.append({**b, "bet_amount": amount})
         sized = sized_scaled
 
