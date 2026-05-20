@@ -804,7 +804,7 @@
 
         <div class="body" id="day-race-details">
           {% for r in day_result.races %}
-            <details id="race-{{ r.race_id }}"
+            <details id="race-{{ r.race_id }}" open
                      data-race-item
                      data-sort-race="{{ loop.index0 }}"
                      data-sort-confidence="{{ "%.6f"|format(r.confidence) }}"
@@ -820,6 +820,7 @@
               <div class="split" style="padding-left:0;padding-right:0">
                 <div>
                   <table>
+                    <caption style="caption-side:top;text-align:left;font-weight:700;padding:0 0 8px">予想順位（全{{ r.payload.prediction_rows|length }}頭）</caption>
                     <thead><tr><th>順位</th><th>馬番</th><th class="left">馬名</th><th>1着率</th><th>3着内率</th><th>オッズ</th><th>人気</th></tr></thead>
                     <tbody>
                     {% for row in r.payload.prediction_rows %}
