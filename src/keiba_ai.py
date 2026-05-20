@@ -341,12 +341,12 @@ def manual_input_race(predictor: KeibaPredictor) -> pd.DataFrame:
 def betting_loop(pred: pd.DataFrame):
     while True:
         print("\n" + "─" * 60)
-        print("💰 賭け方提案")
+        print("賭け方提案")
         print("─" * 60)
-        print("  1) 🧠  自動選択   —  自信度45点以上のレースのみ自動選択(HIGH→ROI重視/MID→バランス)")
-        print("  2) ⚖️  ハイブリッド —  単勝・複勝・ワイドをEV重視で組み合わせ")
-        print("  3) 🎯  期待値重視  —  三連単系を除外し、高EV買い目を優先")
-        print("  4) 🟢  的中率重視  —  3着内率を軸にEVも見て動的に選択")
+        print("  1) 自動選択   —  自信度45点以上のレースのみ自動選択(HIGH→ROI重視/MID→バランス)")
+        print("  2) ハイブリッド —  単勝・複勝・ワイドをEV重視で組み合わせ")
+        print("  3) 期待値重視  —  三連単系を除外し、高EV買い目を優先")
+        print("  4) 的中率重視  —  3着内率を軸にEVも見て動的に選択")
         print("  0) 終了")
         choice = ask("\n選択", default="1", choices=["0", "1", "2", "3", "4"])
         if choice == "0":

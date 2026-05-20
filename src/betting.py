@@ -31,7 +31,7 @@ STYLE_CONFIG = {
         "kelly_frac": 0.50,
     },
     "balance": {  # バランス
-        "name": "⚖️ バランス型",
+        "name": "バランス型",
         "desc": "単勝・複勝・馬連・三連複を組み合わせ",
         "tickets": ["tansho", "fukusho", "umaren", "sanrenpuku"],
         "max_combos": {"tansho": 2, "fukusho": 2, "umaren": 4, "sanrenpuku": 6},
@@ -104,7 +104,7 @@ STYLE_CONFIG = {
         "max_total_tickets": 8,
     },
     "maxroi": {
-        "name": "🎯 厳選・回収率重視",
+        "name": "厳選・回収率重視",
         "desc": "全券種を比較し、単勝以外は市場よりかなり強い時だけ買って回収率を最優先",
         "tickets": ["tansho", "fukusho"],
         "max_combos": {
@@ -176,7 +176,7 @@ STYLE_CONFIG = {
         "max_total_points": 16,
     },
     "actual120": {
-        "name": "🔥 実払戻・三連単120狙い",
+        "name": "実払戻・三連単120狙い",
         "desc": "実払戻検証で強かった三連単1点型。2/3以上のレースで買い、期待値1.2以上の最上位1点に集中",
         "tickets": ["sanrentan"],
         "max_combos": {"sanrentan": 99},
@@ -198,7 +198,7 @@ STYLE_CONFIG = {
         "max_total_points": 1,
     },
     "roi_focus": {
-        "name": "🎯 期待値重視",
+        "name": "期待値重視",
         "desc": "単勝・複勝・ワイドだけでEVを計算。三連系や馬連の高配当外れ値は除外",
         "tickets": ["tansho", "fukusho", "wide"],
         "max_combos": {"tansho": 2, "fukusho": 2, "wide": 4},
@@ -222,7 +222,7 @@ STYLE_CONFIG = {
         "max_total_points": 8,
     },
     "hit_focus": {
-        "name": "🟢 的中率重視",
+        "name": "的中率重視",
         "desc": "3着内率を最優先しつつEVも確認。複勝・ワイドから当たりやすい買い目を動的に選択",
         "tickets": ["fukusho", "wide"],
         "max_combos": {"fukusho": 3, "wide": 3},
@@ -247,7 +247,7 @@ STYLE_CONFIG = {
         "max_total_points": 7,
     },
     "hybrid": {
-        "name": "⚖️ ハイブリッド",
+        "name": "ハイブリッド",
         "desc": "自信度70以上に絞り、単勝・複勝・ワイドから実オッズ込みの期待値で動的に選択。的中率を残しつつ回収率100%超えを狙う",
         "tickets": ["tansho", "fukusho", "wide"],
         "max_combos": {"tansho": 2, "fukusho": 2, "wide": 4},
@@ -271,7 +271,7 @@ STYLE_CONFIG = {
         "max_total_points": 8,
     },
     "smart": {
-        "name": "🧠 自動選択",
+        "name": "自動選択",
         "desc": "自信度75点以上のレースのみ自動選択。HIGH(≥75)→ROI重視、MID→バランス。LOW(<75)はデフォルトでスキップ",
         "_is_smart": True,
         "tickets": [],
@@ -281,7 +281,7 @@ STYLE_CONFIG = {
         "default_min_confidence": 75.0,
     },
     "fukusho_roi": {
-        "name": "🟢 複勝特化・前の高回収",
+        "name": "複勝特化・前の高回収",
         "desc": "前の複勝中心モード。複勝だけを買い、回収率を優先して資金を集中",
         "tickets": ["fukusho"],
         "max_combos": {"fukusho": 4},
@@ -1340,7 +1340,7 @@ def suggest_smart(pred_df: pd.DataFrame, budget: int) -> Dict:
     result = dict(style_results[best_style])
     result["chosen_style"] = best_style
     result["confidence"] = confidence
-    result["style"] = f"🧠 自動選択 → {STYLE_CONFIG[best_style]['name']}"
+    result["style"] = f"自動選択 → {STYLE_CONFIG[best_style]['name']}"
     result["style_desc"] = (
         f"自信度 {confidence:.0f}点({conf_label}) 自動選択: "
         + STYLE_CONFIG[best_style]["desc"]
