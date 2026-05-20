@@ -2,965 +2,700 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Keiba AI</title>
   <style>
     :root {
-      color-scheme: light;
-      --bg: #f6f7f9;
+      --bg: #f1f5f9;
       --panel: #ffffff;
-      --ink: #1b1f24;
-      --muted: #68707c;
-      --line: #d9dee7;
-      --accent: #0f766e;
-      --accent-2: #1d4ed8;
-      --warn: #b45309;
-      --bad: #b91c1c;
-      --good: #047857;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --accent: #16a34a;
+      --accent-h: #15803d;
+      --accent2: #0ea5e9;
+      --warn: #d97706;
+      --bad: #dc2626;
+      --good: #16a34a;
+      --header: #0a1628;
     }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--ink);
-      font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif;
-      font-size: 14px;
-      line-height: 1.45;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--ink); font-family: "Segoe UI","Yu Gothic UI",Meiryo,sans-serif; font-size: 14px; line-height: 1.5; }
+
+    /* ── Header ── */
     header {
-      background: #111827;
+      background: var(--header);
       color: #fff;
-      padding: 16px 22px;
+      height: 54px;
+      padding: 0 22px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 2px 10px rgba(0,0,0,.35);
     }
-    header h1 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: 0;
-    }
-    header .meta { color: #cbd5e1; font-size: 13px; }
-    main {
-      width: min(1440px, 100%);
-      margin: 0 auto;
-      padding: 18px;
-      display: grid;
-      grid-template-columns: 360px minmax(0, 1fr);
-      gap: 18px;
-    }
-    section {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-    }
-    .side { display: grid; gap: 14px; align-content: start; }
-    .section-head {
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--line);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-    }
-    .section-head h2 {
-      margin: 0;
-      font-size: 15px;
-      font-weight: 700;
-    }
-    .body { padding: 14px 16px 16px; }
-    label {
-      display: block;
-      margin: 0 0 6px;
-      color: #374151;
-      font-weight: 600;
-      font-size: 12px;
-    }
-    input, select, textarea {
-      width: 100%;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-      background: #fff;
-      color: var(--ink);
-      padding: 9px 10px;
-      font: inherit;
-      outline: none;
-    }
-    textarea { min-height: 112px; resize: vertical; }
-    input:focus, select:focus, textarea:focus {
-      border-color: var(--accent-2);
-      box-shadow: 0 0 0 3px rgba(29, 78, 216, .12);
-    }
-    .field { margin-bottom: 12px; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .check {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      color: var(--muted);
-      margin: 8px 0 14px;
-    }
+    .hbrand { display: flex; align-items: center; gap: 10px; }
+    .hicon { width: 30px; height: 30px; background: var(--accent); border-radius: 7px; display: grid; place-items: center; font-size: 16px; }
+    header h1 { font-size: 17px; font-weight: 800; }
+    .hsub { color: #94a3b8; font-size: 12px; }
+
+    /* ── Layout ── */
+    .layout { display: grid; grid-template-columns: 330px minmax(0,1fr); min-height: calc(100vh - 54px); align-items: start; }
+
+    /* ── Sidebar ── */
+    .sidebar { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; position: sticky; top: 54px; height: calc(100vh - 54px); overflow: hidden; }
+    .tab-nav { display: grid; grid-template-columns: repeat(4,1fr); background: #f8fafc; border-bottom: 2px solid var(--line); flex-shrink: 0; }
+    .tab-btn { padding: 11px 4px; border: none; background: none; cursor: pointer; font-size: 12px; font-weight: 700; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color .15s, border-color .15s; }
+    .tab-btn:hover { color: var(--ink); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-content { flex: 1; overflow-y: auto; padding: 14px; min-height: 0; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ── Form ── */
+    .sh { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; padding-bottom: 6px; border-bottom: 1px solid var(--line); margin: 14px 0 10px; }
+    .sh:first-child { margin-top: 0; }
+    .field { margin-bottom: 10px; }
+    .field label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; }
+    input, select { width: 100%; border: 1.5px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); padding: 7px 9px; font: inherit; font-size: 13px; outline: none; transition: border-color .15s, box-shadow .15s; }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(22,163,74,.12); }
+    .r2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .check { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); margin: 6px 0 10px; }
     .check input { width: auto; }
-    button {
-      width: 100%;
-      border: 0;
-      border-radius: 6px;
-      background: var(--accent);
-      color: #fff;
-      padding: 10px 12px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    button.secondary { background: #334155; }
-    .error {
-      border: 1px solid #fecaca;
-      background: #fff1f2;
-      color: var(--bad);
-      padding: 10px 12px;
-      border-radius: 6px;
-      margin-bottom: 14px;
-    }
-    .warning {
-      color: var(--warn);
-      background: #fffbeb;
-      border: 1px solid #fde68a;
-      padding: 8px 10px;
-      border-radius: 6px;
-      margin: 8px 0;
-    }
-    .notice {
-      color: #075985;
-      background: #f0f9ff;
-      border: 1px solid #bae6fd;
-      padding: 8px 10px;
-      border-radius: 6px;
-      margin: 8px 0;
-    }
-    .progress-panel {
-      display: none;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #f8fafc;
-      padding: 10px;
-      margin-top: 12px;
-    }
-    .progress-panel.active { display: block; }
-    .progress-track {
-      height: 10px;
-      background: #e2e8f0;
-      border-radius: 999px;
-      overflow: hidden;
-      margin: 8px 0;
-    }
-    .progress-bar {
-      height: 100%;
-      width: 0%;
-      background: var(--accent);
-      transition: width .25s ease;
-    }
-    .progress-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-    .progress-log {
-      margin-top: 8px;
-      color: #334155;
-      font-size: 12px;
-    }
-    .progress-actions {
-      margin-top: 10px;
-      display: flex;
-      justify-content: flex-end;
-    }
-    .loading-cover {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, .38);
-      z-index: 20;
-      place-items: center;
-    }
-    .loading-cover.active { display: grid; }
-    .loading-box {
-      width: min(420px, calc(100% - 32px));
-      background: #fff;
-      border-radius: 8px;
-      padding: 18px;
-      box-shadow: 0 20px 60px rgba(15, 23, 42, .22);
-      border: 1px solid var(--line);
-      text-align: left;
-    }
-    .loading-title { font-weight: 800; }
-    .loading-detail {
-      margin-top: 6px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-    .loading-track {
-      height: 8px;
-      margin-top: 14px;
-      border-radius: 999px;
-      background: #e2e8f0;
-      overflow: hidden;
-    }
-    .loading-fill {
-      height: 100%;
-      width: 0%;
-      background: var(--accent);
-      transition: width .3s ease;
-    }
-    .loading-time {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-top: 12px;
-      color: #334155;
-      font-size: 13px;
-      font-weight: 700;
-    }
-    .empty {
-      min-height: 420px;
-      display: grid;
-      place-items: center;
-      color: var(--muted);
-      text-align: center;
-      padding: 28px;
-    }
-    .summary {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(120px, 1fr));
-      gap: 10px;
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--line);
-    }
-    .metric {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 10px;
-      background: #fbfcfe;
-    }
-    .metric .name { color: var(--muted); font-size: 12px; }
-    .metric .value { font-size: 18px; font-weight: 800; margin-top: 2px; }
-    .metric .value.good { color: var(--good); }
-    .metric .value.warn { color: var(--warn); }
-    .split {
-      display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(360px, .9fr);
-      gap: 16px;
-      padding: 16px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-    }
-    th, td {
-      padding: 9px 8px;
-      border-bottom: 1px solid var(--line);
-      text-align: right;
-      vertical-align: middle;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    th {
-      color: #475569;
-      background: #f8fafc;
-      font-size: 12px;
-      font-weight: 700;
-    }
-    td.left, th.left { text-align: left; }
-    .full-tooltip {
-      position: relative;
-    }
-    .full-tooltip:hover {
-      overflow: visible;
-    }
-    .full-tooltip:hover::after {
-      content: attr(data-full);
-      position: absolute;
-      left: 8px;
-      top: calc(100% - 2px);
-      z-index: 30;
-      width: max-content;
-      min-width: 220px;
-      max-width: min(520px, 88vw);
-      white-space: normal;
-      overflow-wrap: anywhere;
-      text-align: left;
-      color: var(--ink);
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      box-shadow: 0 12px 30px rgba(15, 23, 42, .18);
-      padding: 9px 10px;
-      font-weight: 700;
-    }
-    summary span,
-    .metric .name,
-    .metric .value,
-    .summary-small,
-    .pill {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .rank {
-      display: inline-grid;
-      place-items: center;
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      background: #e0f2fe;
-      color: #075985;
-      font-weight: 800;
-    }
-    .pill {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: #dcfce7;
-      color: #166534;
-      font-weight: 700;
-      font-size: 12px;
-    }
-    .plain {
-      margin: 0;
-      padding: 12px;
-      border: 1px solid var(--line);
-      background: #0f172a;
-      color: #e2e8f0;
-      border-radius: 8px;
-      overflow: auto;
-      font-family: Consolas, "Yu Gothic UI", monospace;
-      font-size: 12px;
-      max-height: 360px;
-    }
-    .cached-list {
-      display: grid;
-      gap: 8px;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-    .cached-list li {
-      border-top: 1px solid var(--line);
-      padding-top: 8px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-    .cached-list strong { color: var(--ink); font-size: 13px; }
-    details {
-      border-top: 1px solid var(--line);
-      padding: 10px 0;
-    }
-    summary {
-      cursor: pointer;
-      list-style: none;
-      display: grid;
-      grid-template-columns: 80px minmax(160px, 1fr) 96px 96px 96px;
-      gap: 10px;
-      align-items: center;
-      font-weight: 700;
-    }
-    summary::-webkit-details-marker { display: none; }
-    .summary-small {
-      color: var(--muted);
-      font-weight: 500;
-      font-size: 12px;
-    }
-    @media (max-width: 980px) {
-      main, .split, .summary { grid-template-columns: 1fr; }
-      header { align-items: flex-start; flex-direction: column; }
-      summary { grid-template-columns: 1fr; }
-      .progress-grid { grid-template-columns: 1fr; }
+    .btn { width: 100%; border: none; border-radius: 7px; padding: 9px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: background .15s; }
+    .btn-p { background: var(--accent); color: #fff; }
+    .btn-p:hover { background: var(--accent-h); }
+    .btn-s { background: #1e293b; color: #fff; }
+    .btn-s:hover { background: #0f172a; }
+    .btn-d { background: var(--bad); color: #fff; font-size: 12px; padding: 6px 10px; width: auto; }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+    /* ── Progress ── */
+    .prog { display: none; background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
+    .prog.active { display: block; }
+    .prog-lbl { font-weight: 700; font-size: 13px; margin-bottom: 7px; }
+    .prog-track { height: 5px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+    .prog-bar { height: 100%; width: 0%; background: var(--accent); transition: width .25s ease; border-radius: 999px; }
+    .prog-meta { display: flex; justify-content: space-between; margin-top: 5px; font-size: 11px; color: var(--muted); }
+    .prog-log { margin-top: 5px; font-size: 11px; color: #475569; line-height: 1.4; }
+    .prog-actions { margin-top: 7px; display: flex; justify-content: flex-end; }
+
+    /* ── Cached list ── */
+    .citem { padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+    .citem:last-child { border-bottom: none; }
+    .citem strong { color: var(--ink); font-size: 13px; }
+
+    /* ── Main ── */
+    .main { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+
+    /* ── Alerts ── */
+    .alert { padding: 9px 13px; border-radius: 7px; font-size: 13px; }
+    .alert-e { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+    .alert-w { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .alert-i { background: #f0f9ff; border: 1px solid #bae6fd; color: #075985; }
+
+    /* ── Card ── */
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    .card-head { padding: 13px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .card-head h2 { font-size: 15px; font-weight: 800; }
+    .card-body { padding: 14px 16px; }
+
+    /* ── Metrics ── */
+    .metrics { display: grid; grid-template-columns: repeat(auto-fill,minmax(105px,1fr)); gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+    .metric { background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; }
+    .m-lbl { font-size: 11px; color: var(--muted); font-weight: 600; display: flex; flex-direction: column; gap: 1px; }
+    .m-sub { font-size: 10px; color: var(--muted); font-weight: 400; opacity: 0.8; }
+    .m-val { font-size: 19px; font-weight: 800; margin-top: 1px; line-height: 1.2; }
+    .m-val.good { color: var(--good); }
+    .m-val.warn { color: var(--warn); }
+    .m-val.bad  { color: var(--bad); }
+    .m-val.sm   { font-size: 13px; }
+
+    /* ── Pill / Badge ── */
+    .pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .pill-g { background: #dcfce7; color: #166534; }
+    .pill-b { background: #dbeafe; color: #1e40af; }
+    .pill-a { background: #fef3c7; color: #92400e; }
+    .pill-r { background: #fee2e2; color: #991b1b; }
+    .pill-gray { background: #f1f5f9; color: #475569; }
+
+    .cbadge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 800; }
+    .c-hi { background: #dcfce7; color: #166534; }
+    .c-mi { background: #fef3c7; color: #92400e; }
+    .c-lo { background: #f1f5f9; color: #64748b; }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 7px 9px; border-bottom: 1px solid var(--line); text-align: right; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    th { background: #f8fafc; color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+    td.l, th.l { text-align: left; }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #f8fafc; }
+    .ev-g { color: var(--good); font-weight: 700; }
+    .ev-o { color: var(--warn); font-weight: 600; }
+    .ev-b { color: var(--bad); }
+
+    /* ── Race detail card ── */
+    .rcard { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; overflow: hidden; margin-bottom: 10px; }
+    .rtoggle { display: grid; grid-template-columns: 90px 1fr 100px 100px 80px; gap: 8px; align-items: center; padding: 11px 15px; background: var(--panel); cursor: pointer; border: none; width: 100%; text-align: left; font: inherit; font-size: 13px; transition: background .15s; }
+    .rtoggle:hover { background: #f8fafc; }
+    .rv { font-weight: 800; font-size: 14px; }
+    .rsub { color: var(--muted); font-size: 11px; margin-top: 1px; }
+    .rbody { display: none; border-top: 1px solid var(--line); }
+    .rbody.open { display: block; }
+    .rgrid { display: grid; grid-template-columns: 1fr 1fr; }
+    .rcol { padding: 12px 14px; }
+    .rcol:first-child { border-right: 1px solid var(--line); }
+    .rcol-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 7px; }
+
+    /* ── Rank circle ── */
+    .rk { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-weight: 800; font-size: 11px; }
+    .rk1 { background: #fef3c7; color: #92400e; }
+    .rk2 { background: #e0f2fe; color: #075985; }
+    .rk3 { background: #f3e8ff; color: #6b21a8; }
+    .rkn { background: #f1f5f9; color: #64748b; }
+
+    /* ── Kelly section ── */
+    .kelly-sec { padding: 10px 14px; border-top: 1px solid var(--line); background: #f0fdf4; }
+    .kelly-title { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 7px; }
+    .alloc-desc { font-size: 11px; color: var(--muted); padding: 7px 14px; background: #f8fafc; border-top: 1px solid var(--line); }
+
+    /* ── Sort bar ── */
+    .sort-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .sort-bar label { font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+    .sort-bar select { width: auto; font-size: 12px; padding: 5px 8px; }
+
+    /* ── Two col ── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+    /* ── Empty ── */
+    .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 420px; color: var(--muted); text-align: center; gap: 10px; }
+    .empty-icon { font-size: 52px; opacity: .35; }
+    .empty-title { font-size: 16px; font-weight: 700; color: var(--ink); }
+    .empty-desc { font-size: 13px; line-height: 1.6; }
+
+    /* ── Loading ── */
+    .lcov { display: none; position: fixed; inset: 0; background: rgba(10,22,40,.6); z-index: 100; place-items: center; backdrop-filter: blur(2px); }
+    .lcov.active { display: grid; }
+    .lbox { width: min(380px,calc(100% - 32px)); background: #fff; border-radius: 12px; padding: 22px; box-shadow: 0 24px 80px rgba(0,0,0,.3); }
+    .ltitle { font-weight: 800; font-size: 16px; }
+    .ldetail { margin-top: 5px; color: var(--muted); font-size: 13px; }
+    .ltrack { height: 5px; margin-top: 14px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+    .lfill { height: 100%; width: 0%; background: var(--accent); border-radius: 999px; transition: width .3s ease; }
+    .ltime { display: flex; justify-content: space-between; margin-top: 9px; font-size: 12px; color: var(--muted); }
+
+    /* ── Tooltip ── */
+    .full-tooltip { position: relative; }
+    .full-tooltip:hover { overflow: visible; }
+    .full-tooltip:hover::after { content: attr(data-full); position: absolute; left: 0; top: calc(100% + 4px); z-index: 50; width: max-content; max-width: min(480px,88vw); white-space: normal; overflow-wrap: anywhere; text-align: left; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 12px 30px rgba(0,0,0,.15); padding: 7px 10px; font-size: 12px; font-weight: 500; }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; height: auto; }
+      .sidebar { height: auto; border-right: none; border-bottom: 1px solid var(--line); }
+      .two-col, .rgrid { grid-template-columns: 1fr; }
+      .rtoggle { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>Keiba AI Web</h1>
-    <div class="meta">未来予想 / 自動取得 / 情報更新</div>
+    <div class="hbrand">
+      <div class="hicon">🏇</div>
+      <h1>Keiba AI</h1>
+    </div>
+    <div class="hsub">予想 / シミュレーション / データ更新</div>
   </header>
 
-  <main>
-    <div class="side">
-      <section>
-        <div class="section-head"><h2>未来レース予想</h2></div>
-        <div class="body">
-          {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <div class="layout">
+    <aside class="sidebar">
+      <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="predict">予想</button>
+        <button class="tab-btn" data-tab="simulate">シミュ</button>
+        <button class="tab-btn" data-tab="update">更新</button>
+        <button class="tab-btn" data-tab="history">履歴</button>
+      </nav>
+      <div class="tab-content">
+
+        <!-- 予想タブ -->
+        <div class="tab-pane active" id="tab-predict">
+          {% if error %}<div class="alert alert-e" style="margin-bottom:10px">{{ error }}</div>{% endif %}
+          <div class="sh">全レース予想</div>
           <form id="predict-day-form" method="post" action="{{ url_for('predict_day_route') }}">
             <div class="field">
-              <label for="kaisai_date">候補日</label>
+              <label>候補日</label>
               <select id="kaisai_date" name="kaisai_date">
-                {% for d in date_candidates %}
-                  <option value="{{ d.value }}">{{ d.label }}</option>
-                {% endfor %}
+                {% for d in date_candidates %}<option value="{{ d.value }}">{{ d.label }}</option>{% endfor %}
               </select>
             </div>
-            <div class="row">
-              <div class="field">
-                <label for="day_budget">予算</label>
-                <input id="day_budget" name="budget" value="{{ budget }}" inputmode="numeric">
-              </div>
-              <div class="field">
-                <label for="day_style">買い方</label>
+            <div class="r2">
+              <div class="field"><label>予算/レース</label><input id="day_budget" name="budget" value="{{ budget }}" inputmode="numeric"></div>
+              <div class="field"><label title="Kelly AIの賭け金計算に使う総資金">Kelly資金</label><input id="day_kelly_bankroll" name="kelly_bankroll" value="{{ kelly_bankroll }}" inputmode="numeric"></div>
+              <div class="field"><label>買い方</label>
                 <select id="day_style" name="style">
-                  {% for key, cfg in styles.items() %}
-                    <option value="{{ key }}" {% if key == selected_style %}selected{% endif %}>{{ cfg.name }}</option>
-                  {% endfor %}
+                  {% for key, cfg in styles.items() %}<option value="{{ key }}" {% if key == selected_style %}selected{% endif %}>{{ cfg.name }}</option>{% endfor %}
                 </select>
               </div>
-              <div class="field">
-                <label for="day_model_variant">予想モデル</label>
+              <div class="field"><label>予想モデル</label>
                 <select id="day_model_variant" name="model_variant">
-                  {% for key, cfg in model_variants.items() %}
-                    <option value="{{ key }}" {% if key == selected_model_variant %}selected{% endif %}>{{ cfg.label }}</option>
-                  {% endfor %}
+                  {% for key, cfg in model_variants.items() %}<option value="{{ key }}" {% if key == selected_model_variant %}selected{% endif %}>{{ cfg.label }}</option>{% endfor %}
                 </select>
               </div>
             </div>
-            <label class="check"><input type="checkbox" name="force_update" checked> 日付の全レースを取得し直す</label>
-            <button type="submit">この日の全レースを予想</button>
+            <label class="check"><input type="checkbox" name="force_update" checked> 全レース情報を取得し直す</label>
+            <button class="btn btn-p" type="submit">この日の全レースを予想</button>
           </form>
-          <div id="day-progress" class="progress-panel">
-            <strong id="day-status">未来予想準備中</strong>
-            <div class="progress-track"><div id="day-bar" class="progress-bar"></div></div>
-            <div class="progress-grid">
-              <div>進捗: <span id="day-count">0 / 0</span></div>
-              <div>残り時間: <span id="day-eta">計算中</span></div>
-              <div>フェーズ: <span id="day-phase">queued</span></div>
+          <div id="day-progress" class="prog">
+            <div class="prog-lbl" id="day-status">未来予想準備中</div>
+            <div class="prog-track"><div id="day-bar" class="prog-bar"></div></div>
+            <div class="prog-meta">
+              <span>進捗 <strong id="day-count">0 / 0</strong></span>
+              <span>残り <strong id="day-eta">計算中</strong></span>
+              <span id="day-phase">queued</span>
             </div>
-            <div id="day-log" class="progress-log"></div>
-            <div class="progress-actions">
-              <button id="day-cancel" class="secondary" type="button" disabled>停止</button>
-            </div>
+            <div id="day-log" class="prog-log"></div>
+            <div class="prog-actions"><button id="day-cancel" class="btn btn-d" type="button" disabled>停止</button></div>
           </div>
 
-          <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px">
-            <h3 style="margin:0 0 10px;font-size:14px">個別レース指定</h3>
-            <form id="predict-race-form" class="blocking-form" method="post" action="{{ url_for('predict_race_select_route') }}">
-              <div class="field">
-                <label for="race_kaisai_date">日付</label>
+          <div class="sh">個別レース指定</div>
+          <form id="predict-race-form" class="blocking-form" method="post" action="{{ url_for('predict_race_select_route') }}">
+            <div class="r2">
+              <div class="field"><label>日付</label>
                 <input id="race_kaisai_date" name="kaisai_date" value="{% if date_candidates %}{{ date_candidates[0].value }}{% endif %}" list="race-date-options" placeholder="YYYY-MM-DD">
-                <datalist id="race-date-options">
-                  {% for d in date_candidates %}
-                    <option value="{{ d.value }}">{{ d.label }}</option>
-                  {% endfor %}
-                </datalist>
+                <datalist id="race-date-options">{% for d in date_candidates %}<option value="{{ d.value }}">{{ d.label }}</option>{% endfor %}</datalist>
               </div>
-              <div class="row">
-                <div class="field">
-                  <label for="race_venue_code">競馬場</label>
-                  <select id="race_venue_code" name="venue_code">
-                    {% for code, name in venue_options %}
-                      <option value="{{ code }}" {% if code == "08" %}selected{% endif %}>{{ name }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <div class="field">
-                  <label for="race_round_no">R番号</label>
-                  <input id="race_round_no" name="round_no" value="4" inputmode="numeric">
-                </div>
+              <div class="field"><label>競馬場</label>
+                <select id="race_venue_code" name="venue_code">
+                  {% for code, name in venue_options %}<option value="{{ code }}" {% if code == "08" %}selected{% endif %}>{{ name }}</option>{% endfor %}
+                </select>
               </div>
-              <div class="row">
-                <div class="field">
-                  <label for="race_budget">予算</label>
-                  <input id="race_budget" name="budget" value="{{ budget }}" inputmode="numeric">
-                </div>
-                <div class="field">
-                  <label for="race_style">買い方</label>
-                  <select id="race_style" name="style">
-                    {% for key, cfg in styles.items() %}
-                      <option value="{{ key }}" {% if key == selected_style %}selected{% endif %}>{{ cfg.name }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <div class="field">
-                  <label for="race_model_variant">予想モデル</label>
-                  <select id="race_model_variant" name="model_variant">
-                    {% for key, cfg in model_variants.items() %}
-                      <option value="{{ key }}" {% if key == selected_model_variant %}selected{% endif %}>{{ cfg.label }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
+              <div class="field"><label>R番号</label><input id="race_round_no" name="round_no" value="4" inputmode="numeric"></div>
+              <div class="field"><label>予算</label><input id="race_budget" name="budget" value="{{ budget }}" inputmode="numeric"></div>
+              <div class="field"><label title="Kelly AIの賭け金計算に使う総資金">Kelly資金</label><input id="race_kelly_bankroll" name="kelly_bankroll" value="{{ kelly_bankroll }}" inputmode="numeric"></div>
+              <div class="field"><label>買い方</label>
+                <select id="race_style" name="style">
+                  {% for key, cfg in styles.items() %}<option value="{{ key }}" {% if key == selected_style %}selected{% endif %}>{{ cfg.name }}</option>{% endfor %}
+                </select>
               </div>
-              <label class="check"><input type="checkbox" name="force_update" checked> このレースを取得し直す</label>
-              <button class="secondary" type="submit">指定レースだけ予想</button>
-            </form>
-          </div>
-
-        </div>
-      </section>
-
-      <section>
-        <div class="section-head"><h2>情報更新モード</h2></div>
-        <div class="body">
-          <form id="auto-update-form" method="post" action="{{ url_for('update_route') }}">
-            <details>
-              <summary style="display:block;font-weight:700">自動更新の範囲設定</summary>
-              <div class="row" style="margin-top:10px">
-                <div class="field">
-                  <label for="start_date">開始日</label>
-                  <input id="start_date" name="start_date" placeholder="空欄ならデータ最終日の翌日">
-                </div>
-                <div class="field">
-                  <label for="end_date">終了日</label>
-                  <input id="end_date" name="end_date" placeholder="空欄なら今日">
-                </div>
-              </div>
-            </details>
-            <div class="field">
-              <label for="limit">最大取得レース数</label>
-              <input id="limit" name="limit" value="0" inputmode="numeric">
-              <small>0なら未登録の結果確定済みレースをすべて学習データへ追加</small>
             </div>
-            <button class="secondary" type="submit">日付検索から学習データ更新まで自動実行</button>
+            <div class="field"><label>予想モデル</label>
+              <select id="race_model_variant" name="model_variant">
+                {% for key, cfg in model_variants.items() %}<option value="{{ key }}" {% if key == selected_model_variant %}selected{% endif %}>{{ cfg.label }}</option>{% endfor %}
+              </select>
+            </div>
+            <label class="check"><input type="checkbox" name="force_update" checked> このレースを取得し直す</label>
+            <button class="btn btn-s" type="submit">指定レースだけ予想</button>
           </form>
-          <div id="update-progress" class="progress-panel">
-            <strong id="update-status">更新準備中</strong>
-            <div class="progress-track"><div id="update-bar" class="progress-bar"></div></div>
-            <div class="progress-grid">
-              <div>進捗: <span id="update-count">0 / 0</span></div>
-              <div>残り時間: <span id="update-eta">計算中</span></div>
-              <div>フェーズ: <span id="update-phase">queued</span></div>
-            </div>
-            <div id="update-log" class="progress-log"></div>
-          </div>
+        </div>
 
+        <!-- シミュタブ -->
+        <div class="tab-pane" id="tab-simulate">
+          <div class="sh" style="margin-top:0">期間シミュレーション</div>
+          <form id="simulate-form" method="post" action="{{ url_for('simulate_route') }}">
+            <div class="r2">
+              <div class="field"><label>開始日</label><input id="sim_start" name="sim_start" placeholder="2025-01-01"></div>
+              <div class="field"><label>終了日</label><input id="sim_end" name="sim_end" placeholder="2025-12-31"></div>
+              <div class="field"><label>予算/レース</label><input id="sim_budget" name="budget" value="{{ budget }}" inputmode="numeric"></div>
+              <div class="field"><label title="Kelly AIの賭け金計算に使う総資金">Kelly資金</label><input id="sim_kelly_bankroll" name="kelly_bankroll" value="{{ kelly_bankroll }}" inputmode="numeric"></div>
+            </div>
+            <div class="field"><label>最低自信度</label><input id="sim_conf" name="min_confidence" placeholder="空欄なら買い方の既定値"></div>
+            <div class="field"><label>買い方</label>
+              <select id="sim_style" name="style">
+                {% for key, cfg in styles.items() %}<option value="{{ key }}" {% if key == selected_style %}selected{% endif %}>{{ cfg.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="field"><label>予想モデル</label>
+              <select id="sim_model_variant" name="model_variant">
+                {% for key, cfg in model_variants.items() %}<option value="{{ key }}" {% if key == selected_model_variant %}selected{% endif %}>{{ cfg.label }}</option>{% endfor %}
+              </select>
+            </div>
+            <button class="btn btn-s" type="submit">シミュレーション実行</button>
+          </form>
+          <div id="sim-progress" class="prog">
+            <div class="prog-lbl" id="sim-status">シミュレーション準備中</div>
+            <div class="prog-track"><div id="sim-bar" class="prog-bar"></div></div>
+            <div class="prog-meta">
+              <span>進捗 <strong id="sim-count">0 / 0</strong></span>
+              <span>残り <strong id="sim-eta">計算中</strong></span>
+              <span id="sim-phase">queued</span>
+            </div>
+            <div id="sim-log" class="prog-log"></div>
+            <div class="prog-actions"><button id="sim-cancel" class="btn btn-d" type="button" disabled>停止</button></div>
+          </div>
+        </div>
+
+        <!-- 更新タブ -->
+        <div class="tab-pane" id="tab-update">
+          <div class="sh" style="margin-top:0">データ更新</div>
+          <form id="auto-update-form" method="post" action="{{ url_for('update_route') }}">
+            <div class="r2">
+              <div class="field"><label>開始日</label><input id="start_date" name="start_date" placeholder="空欄ならデータ最終日翌日"></div>
+              <div class="field"><label>終了日</label><input id="end_date" name="end_date" placeholder="空欄なら今日"></div>
+            </div>
+            <div class="field">
+              <label>最大取得レース数</label>
+              <input id="limit" name="limit" value="0" inputmode="numeric">
+              <div class="hint">0なら未登録レースをすべて追加</div>
+            </div>
+            <button class="btn btn-s" type="submit">データ自動更新</button>
+          </form>
+          <div id="update-progress" class="prog">
+            <div class="prog-lbl" id="update-status">更新準備中</div>
+            <div class="prog-track"><div id="update-bar" class="prog-bar"></div></div>
+            <div class="prog-meta">
+              <span>進捗 <strong id="update-count">0 / 0</strong></span>
+              <span>残り <strong id="update-eta">計算中</strong></span>
+              <span id="update-phase">queued</span>
+            </div>
+            <div id="update-log" class="prog-log"></div>
+          </div>
           {% if updates %}
             {% if updates.mode == "auto" %}
-              <div class="warning">
-                {{ updates.start_date }} から {{ updates.end_date }} まで {{ updates.scanned_dates }}日検索。
-                発見 {{ updates.discovered_races }}R / 既存 {{ updates.skipped_existing }}R / 更新 {{ updates.updated }}R / 失敗 {{ updates.failed }}R。
-                {% if updates.lookup_updated %}オッズ・人気なしモデル用lookupも更新済み。{% endif %}
-                {% if updates.lookup_update and updates.lookup_update.error %}lookup更新エラー: {{ updates.lookup_update.error }}{% endif %}
-                {% if updates.stopped_by_limit %}最大取得数で停止しました。{% endif %}
+              <div class="alert alert-i" style="margin-top:10px;font-size:12px">
+                {{ updates.start_date }} → {{ updates.end_date }} 検索{{ updates.scanned_dates }}日 / 発見{{ updates.discovered_races }}R / 更新{{ updates.updated }}R / 失敗{{ updates.failed }}R{% if updates.lookup_updated %} ✓ lookup更新{% endif %}{% if updates.stopped_by_limit %} ※最大数で停止{% endif %}
               </div>
             {% endif %}
             {% set update_rows = updates.updates if updates.updates is defined else updates %}
-            <table style="margin-top:12px">
-              <thead><tr><th class="left">race_id</th><th>頭数</th><th class="left">結果</th></tr></thead>
+            <table style="margin-top:10px;border:1px solid var(--line);border-radius:7px;overflow:hidden">
+              <thead><tr><th class="l">race_id</th><th>頭数</th><th class="l">結果</th></tr></thead>
               <tbody>
-                {% for u in update_rows %}
-                  <tr>
-                    <td class="left">{{ u.race_id }}</td>
-                    <td>{{ u.rows }}</td>
-                    <td class="left">{{ u.message }}</td>
-                  </tr>
-                {% else %}
-                  <tr><td colspan="3" class="left">更新対象はありませんでした。</td></tr>
-                {% endfor %}
+                {% for u in update_rows %}<tr><td class="l">{{ u.race_id }}</td><td>{{ u.rows }}</td><td class="l">{{ u.message }}</td></tr>
+                {% else %}<tr><td colspan="3" class="l">更新対象はありませんでした。</td></tr>{% endfor %}
               </tbody>
             </table>
           {% endif %}
         </div>
-      </section>
 
-      <section>
-        <div class="section-head"><h2>シミュレーション</h2></div>
-        <div class="body">
-          <form id="simulate-form" method="post" action="{{ url_for('simulate_route') }}">
-            <div class="row">
-              <div class="field">
-                <label for="sim_start">開始日</label>
-                <input id="sim_start" name="sim_start" placeholder="2025-01-01">
-              </div>
-              <div class="field">
-                <label for="sim_end">終了日</label>
-                <input id="sim_end" name="sim_end" placeholder="2025-12-31">
-              </div>
-            </div>
-            <div class="row">
-              <div class="field">
-                <label for="sim_budget">予算/レース</label>
-                <input id="sim_budget" name="budget" value="{{ budget }}" inputmode="numeric">
-              </div>
-              <div class="field">
-                <label for="sim_conf">最低自信度</label>
-                <input id="sim_conf" name="min_confidence" placeholder="空欄なら買い方の既定値">
-              </div>
-            </div>
-            <div class="field">
-              <label for="sim_style">買い方</label>
-              <select id="sim_style" name="style">
-                {% for key, cfg in styles.items() %}
-                  <option value="{{ key }}" {% if key == selected_style %}selected{% endif %}>{{ cfg.name }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="field">
-              <label for="sim_model_variant">予想モデル</label>
-              <select id="sim_model_variant" name="model_variant">
-                {% for key, cfg in model_variants.items() %}
-                  <option value="{{ key }}" {% if key == selected_model_variant %}selected{% endif %}>{{ cfg.label }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <button class="secondary" type="submit">期間をシミュレーション</button>
-          </form>
-          <div id="sim-progress" class="progress-panel">
-            <strong id="sim-status">シミュレーション準備中</strong>
-            <div class="progress-track"><div id="sim-bar" class="progress-bar"></div></div>
-            <div class="progress-grid">
-              <div>進捗: <span id="sim-count">0 / 0</span></div>
-              <div>残り時間: <span id="sim-eta">計算中</span></div>
-              <div>フェーズ: <span id="sim-phase">queued</span></div>
-            </div>
-            <div id="sim-log" class="progress-log"></div>
-            <div class="progress-actions">
-              <button id="sim-cancel" class="secondary" type="button" disabled>停止</button>
-            </div>
-          </div>
+        <!-- 履歴タブ -->
+        <div class="tab-pane" id="tab-history">
+          <div class="sh" style="margin-top:0">キャッシュ済みレース</div>
+          {% for item in cached %}
+            <div class="citem"><strong>{{ item.race_id }}</strong><br>{{ item.title }} {{ item.date }}<br>{{ item.fetched_at }}</div>
+          {% else %}
+            <div style="color:var(--muted);font-size:13px;padding:12px 0">まだキャッシュはありません。</div>
+          {% endfor %}
         </div>
-      </section>
 
-      <section>
-        <div class="section-head"><h2>更新済み</h2></div>
-        <div class="body">
-          <ul class="cached-list">
-            {% for item in cached %}
-              <li>
-                <strong>{{ item.race_id }}</strong><br>
-                {{ item.title }} {{ item.date }}<br>
-                {{ item.fetched_at }}
-              </li>
-            {% else %}
-              <li>まだキャッシュはありません。</li>
-            {% endfor %}
-          </ul>
-        </div>
-      </section>
-    </div>
+      </div>
+    </aside>
 
-    <section>
+    <!-- Main -->
+    <main class="main">
+
       {% if sim_result %}
-        <div class="section-head">
-          <h2>{{ sim_result.start_date }} - {{ sim_result.end_date }} シミュレーション</h2>
-          <span class="pill">{{ sim_result.style }}</span>
+      <div class="card">
+        <div class="card-head">
+          <h2>{{ sim_result.start_date }} — {{ sim_result.end_date }} シミュ</h2>
+          <span class="pill pill-b">{{ sim_result.style_name }}</span>
         </div>
-        <div class="summary">
-          <div class="metric"><div class="name">回収率</div><div class="value good">{{ "%.1f%%"|format(sim_result.roi) }}</div></div>
-          <div class="metric"><div class="name">収支</div><div class="value {% if sim_result.profit >= 0 %}good{% else %}warn{% endif %}">¥{{ "{:+,}".format(sim_result.profit) }}</div></div>
-          <div class="metric"><div class="name">的中率</div><div class="value">{{ "%.1f%%"|format(sim_result.hit_rate) }}</div></div>
-          <div class="metric"><div class="name">購入レース</div><div class="value">{{ sim_result.bought }}</div></div>
-          <div class="metric"><div class="name">検証レース</div><div class="value">{{ sim_result.tested }}</div></div>
+        <div class="metrics">
+          <div class="metric"><div class="m-lbl">回収率</div><div class="m-val {% if sim_result.roi >= 100 %}good{% elif sim_result.roi >= 85 %}warn{% else %}bad{% endif %}">{{ "%.1f%%"|format(sim_result.roi) }}</div></div>
+          <div class="metric"><div class="m-lbl">収支</div><div class="m-val {% if sim_result.profit >= 0 %}good{% else %}bad{% endif %}">¥{{ "{:+,}".format(sim_result.profit) }}</div></div>
+          <div class="metric"><div class="m-lbl">レース的中率</div><div class="m-val">{{ "%.1f%%"|format(sim_result.hit_rate) }}</div></div>
+          <div class="metric"><div class="m-lbl">単勝率<span class="m-sub">予想1位→1着</span></div><div class="m-val">{{ "%.1f%%"|format(sim_result.top1_win_rate) }}</div></div>
+          <div class="metric"><div class="m-lbl">複勝率<span class="m-sub">予想1位→3着内</span></div><div class="m-val">{{ "%.1f%%"|format(sim_result.top1_top3_rate) }}</div></div>
+          <div class="metric"><div class="m-lbl">上位3頭3着内率<span class="m-sub">{{ sim_result.top3_hit_fraction }}</span></div><div class="m-val">{{ "%.1f%%"|format(sim_result.top3_hit_rate) }}</div></div>
+          <div class="metric"><div class="m-lbl">購入レース</div><div class="m-val">{{ sim_result.bought }}</div></div>
+          <div class="metric"><div class="m-lbl">検証レース</div><div class="m-val">{{ sim_result.tested }}</div></div>
+          <div class="metric"><div class="m-lbl">総投資</div><div class="m-val sm">¥{{ "{:,}".format(sim_result.total_bet) }}</div></div>
+          <div class="metric"><div class="m-lbl">総払戻</div><div class="m-val sm">¥{{ "{:,}".format(sim_result.total_payout) }}</div></div>
+          <div class="metric"><div class="m-lbl">買い目的中率</div><div class="m-val sm">{{ "%.1f%%"|format(sim_result.ticket_hit_rate) }}</div></div>
+          <div class="metric"><div class="m-lbl">最低自信度</div><div class="m-val sm">{{ "%.1f"|format(sim_result.min_confidence) }}</div></div>
         </div>
-        <div class="summary">
-          <div class="metric"><div class="name">総投資</div><div class="value">¥{{ "{:,}".format(sim_result.total_bet) }}</div></div>
-          <div class="metric"><div class="name">総払戻</div><div class="value">¥{{ "{:,}".format(sim_result.total_payout) }}</div></div>
-          <div class="metric"><div class="name">実払戻使用</div><div class="value">{{ sim_result.actual_payout_races|default(0) }}R</div></div>
-          <div class="metric"><div class="name">買い目 的中率</div><div class="value">{{ "%.1f%%"|format(sim_result.ticket_hit_rate) }}</div></div>
-          <div class="metric"><div class="name">平均点数</div><div class="value">{{ "%.1f"|format(sim_result.avg_tickets) }}</div></div>
-          <div class="metric"><div class="name">最低自信度</div><div class="value">{{ "%.1f"|format(sim_result.min_confidence) }}</div></div>
-          <div class="metric"><div class="name">予想モデル</div><div class="value">{{ sim_result.model_variant_label|default("") }}</div></div>
-        </div>
-        <div class="body">
-          <div><strong>予想精度:</strong>
-            予想1位の1着率 {{ "%.1f%%"|format(sim_result.top1_win_rate) }} /
-            予想1位の3着内率 {{ "%.1f%%"|format(sim_result.top1_top3_rate) }} /
-            予想上位3頭の3着内率 {{ "%.1f%%"|format(sim_result.top3_hit_rate) }}
-            ({{ sim_result.top3_hit_fraction }}) /
-            平均 {{ "%.2f"|format(sim_result.top3_hits_avg) }}頭
-          </div>
-          <div style="color:var(--muted);margin-top:4px">
-            自信度スキップ {{ sim_result.skipped_confidence }}R / 買い目なし {{ sim_result.no_bet }}R。
-            {{ sim_result.payout_mode|default("実払戻優先") }}: {{ sim_result.actual_payout_races|default(0) }}R
-            ({{ "%.1f%%"|format(sim_result.actual_payout_rate|default(0)) }})。キャッシュがないレースは推定オッズです。
+        <div class="card-body">
+          <div style="font-size:12px;color:var(--muted)">
+            自信度スキップ {{ sim_result.skipped_confidence }}R / 買い目なし {{ sim_result.no_bet }}R / 実払戻 {{ sim_result.actual_payout_races|default(0) }}R ({{ "%.1f%%"|format(sim_result.actual_payout_rate|default(0)) }}) / {{ sim_result.model_variant_label|default("") }}
           </div>
         </div>
-
-        <div class="split">
-          <div>
-            <div class="section-head" style="padding-left:0;padding-right:0;border-top:1px solid var(--line)">
-              <h2>自信度別</h2>
-            </div>
-            <table>
-              <thead><tr><th class="left">自信度</th><th>レース</th><th>的中率</th><th>投資</th><th>払戻</th><th>ROI</th></tr></thead>
-              <tbody>
-              {% for row in sim_result.by_conf %}
-                <tr>
-                  <td class="left">{{ row.conf_label }}</td>
-                  <td>{{ row.races }}</td>
-                  <td>{{ "%.1f%%"|format(row.hit_rate) }}</td>
-                  <td>¥{{ "{:,}".format(row.bet|int) }}</td>
-                  <td>¥{{ "{:,}".format(row.payout|int) }}</td>
-                  <td>{{ "%.1f%%"|format(row.roi) }}</td>
-                </tr>
-              {% else %}
-                <tr><td colspan="6" class="left">購入レースがありません。</td></tr>
-              {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          <div>
-            <div class="section-head" style="padding-left:0;padding-right:0;border-top:1px solid var(--line)">
-              <h2>高払戻レース</h2>
-            </div>
-            <table>
-              <thead><tr><th class="left">日付</th><th>race_id</th><th>自信度</th><th>投資</th><th>払戻</th><th>ROI</th></tr></thead>
-              <tbody>
-              {% for row in sim_result.top_payout_rows %}
-                <tr>
-                  <td class="left">{{ row.date }}</td>
-                  <td>{{ row.race_id }}</td>
-                  <td>{{ "%.1f"|format(row.confidence) }}</td>
-                  <td>¥{{ "{:,}".format(row.bet) }}</td>
-                  <td>¥{{ "{:,}".format(row.payout) }}</td>
-                  <td>{{ "%.1f%%"|format(row.roi) }}</td>
-                </tr>
-              {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="body">
-          <div class="section-head" style="padding-left:0;padding-right:0;border-top:1px solid var(--line)">
-            <h2>直近/対象レース一覧</h2>
-          </div>
+      </div>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head"><h2>自信度別</h2></div>
           <table>
-            <thead><tr><th class="left">日付</th><th>race_id</th><th>自信度</th><th>投資</th><th>払戻</th><th>点数</th><th>上位3頭3着内</th><th>本命3着内率</th></tr></thead>
+            <thead><tr><th class="l">自信度</th><th>レース</th><th>的中率</th><th>ROI</th><th>収支</th></tr></thead>
             <tbody>
-            {% for row in sim_result.recent_rows %}
+            {% for row in sim_result.by_conf %}
               <tr>
-                <td class="left">{{ row.date }}</td>
-                <td>{{ row.race_id }}</td>
-                <td>{{ "%.1f"|format(row.confidence) }}</td>
+                <td class="l">{{ row.conf_label }}</td><td>{{ row.races }}</td>
+                <td>{{ "%.1f%%"|format(row.hit_rate) }}</td>
+                <td class="{% if row.roi >= 100 %}ev-g{% elif row.roi >= 85 %}ev-o{% else %}ev-b{% endif %}">{{ "%.1f%%"|format(row.roi) }}</td>
+                <td class="{% if row.payout - row.bet >= 0 %}ev-g{% else %}ev-b{% endif %}">¥{{ "{:+,}".format((row.payout - row.bet)|int) }}</td>
+              </tr>
+            {% else %}<tr><td colspan="5" class="l">購入レースがありません。</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>高払戻レース</h2></div>
+          <table>
+            <thead><tr><th class="l">日付</th><th>race_id</th><th>投資</th><th>払戻</th><th>ROI</th></tr></thead>
+            <tbody>
+            {% for row in sim_result.top_payout_rows %}
+              <tr>
+                <td class="l">{{ row.date }}</td><td>{{ row.race_id }}</td>
                 <td>¥{{ "{:,}".format(row.bet) }}</td>
                 <td>¥{{ "{:,}".format(row.payout) }}</td>
-                <td>{{ row.tickets }}</td>
-                <td>{{ row.top3_fraction }} ({{ "%.1f%%"|format(row.top3_hit_rate) }})</td>
-                <td>{{ "%.1f%%"|format(row.top_top3) }}</td>
+                <td class="ev-g">{{ "%.1f%%"|format(row.roi) }}</td>
               </tr>
-            {% else %}
-              <tr><td colspan="8" class="left">購入レースがありません。</td></tr>
             {% endfor %}
             </tbody>
           </table>
         </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>直近レース一覧</h2></div>
+        <table>
+          <thead><tr><th class="l">日付</th><th>race_id</th><th>自信度</th><th>投資</th><th>払戻</th><th>点数</th><th>上位3頭3着内</th><th>本命3着内率</th></tr></thead>
+          <tbody>
+          {% for row in sim_result.recent_rows %}
+            <tr>
+              <td class="l">{{ row.date }}</td><td>{{ row.race_id }}</td>
+              <td>{{ "%.1f"|format(row.confidence) }}</td>
+              <td>¥{{ "{:,}".format(row.bet) }}</td>
+              <td class="{% if row.payout > row.bet %}ev-g{% elif row.payout > 0 %}ev-o{% else %}ev-b{% endif %}">¥{{ "{:,}".format(row.payout) }}</td>
+              <td>{{ row.tickets }}</td><td>{{ row.top3_fraction }}</td>
+              <td>{{ "%.1f%%"|format(row.top_top3) }}</td>
+            </tr>
+          {% else %}<tr><td colspan="8" class="l">購入レースがありません。</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+
       {% elif day_result %}
-        <div class="section-head">
+      <div class="card">
+        <div class="card-head">
           <h2>{{ day_result.mode_title|default(day_result.date ~ " 全レース予想") }}</h2>
-          <span class="pill">{{ day_result.races|length }}R</span>
+          <span class="pill pill-g">{{ day_result.races|length }}R</span>
         </div>
-        <div class="summary">
-          <div class="metric"><div class="name">取得レース</div><div class="value">{{ day_result.race_ids|length }}</div></div>
-          <div class="metric"><div class="name">予想成功</div><div class="value good">{{ day_result.races|length }}</div></div>
-          <div class="metric"><div class="name">失敗</div><div class="value warn">{{ day_result.errors|length }}</div></div>
-          <div class="metric"><div class="name">予算/レース</div><div class="value">¥{{ "{:,}".format(day_result.budget) }}</div></div>
-          <div class="metric"><div class="name">予想モデル</div><div class="value">{{ model_variants[day_result.model_variant|default("market")].label }}</div></div>
-          <div class="metric"><div class="name">表示順</div><div class="value" id="instant-sort-label">開催順</div></div>
+        <div class="metrics">
+          <div class="metric"><div class="m-lbl">開催レース</div><div class="m-val">{{ day_result.race_ids|length }}</div></div>
+          <div class="metric"><div class="m-lbl">予想成功</div><div class="m-val good">{{ day_result.races|length }}</div></div>
+          <div class="metric"><div class="m-lbl">失敗</div><div class="m-val {% if day_result.errors|length > 0 %}bad{% endif %}">{{ day_result.errors|length }}</div></div>
+          <div class="metric"><div class="m-lbl">予算/レース</div><div class="m-val sm">¥{{ "{:,}".format(day_result.budget) }}</div></div>
+          <div class="metric"><div class="m-lbl">予想モデル</div><div class="m-val sm">{{ model_variants[day_result.model_variant|default("market")].label }}</div></div>
         </div>
-        <div class="body">
-          <div class="field" style="max-width:260px;margin-bottom:12px">
-            <label for="instant-sort">並び替え</label>
+        {% for note in day_result.notices %}<div class="alert alert-i" style="margin:8px 16px">{{ note }}</div>{% endfor %}
+        {% for e in day_result.errors %}<div class="alert alert-w" style="margin:8px 16px">{{ e.race_id }}: {{ e.message }}</div>{% endfor %}
+        <div class="card-body" style="padding-top:8px">
+          <div class="sort-bar">
+            <label>並び替え</label>
             <select id="instant-sort">
               <option value="race">開催順</option>
               <option value="confidence">自信度順</option>
               <option value="expected_roi">期待ROI順</option>
             </select>
+            <span style="font-size:12px;color:var(--muted)" id="instant-sort-label">開催順</span>
           </div>
           <table>
-            <thead>
-              <tr>
-                <th class="left">レース</th><th class="left">条件</th><th>自信度</th><th>本命</th><th>3着内率</th><th>購入</th><th>点数</th>
-              </tr>
-            </thead>
+            <thead><tr><th class="l">レース</th><th class="l">条件</th><th>自信度</th><th class="l">本命</th><th>3着内率</th><th>購入</th><th>点数</th></tr></thead>
             <tbody id="day-race-tbody">
             {% for r in day_result.races %}
-              <tr data-race-item
-                  data-sort-race="{{ loop.index0 }}"
+              <tr data-race-item data-sort-race="{{ loop.index0 }}"
                   data-sort-confidence="{{ "%.6f"|format(r.confidence) }}"
                   data-sort-expected-roi="{{ "%.6f"|format(r.expected_roi) }}">
-                <td class="left"><a href="#race-{{ r.race_id }}">{{ r.venue }} {{ "%.0f"|format(r.round_no) }}R</a></td>
-                <td class="left">{{ r.title }} / {{ r.course }}</td>
-                <td>{{ "%.1f"|format(r.confidence) }}</td>
-                <td>{{ r.top_horse_no }} {{ r.top_name }}</td>
+                <td class="l"><a href="#race-{{ r.race_id }}" style="color:var(--accent2);font-weight:700;text-decoration:none">{{ r.venue }} {{ "%.0f"|format(r.round_no) }}R</a></td>
+                <td class="l" style="font-size:12px;color:var(--muted)">{{ r.title }} / {{ r.course }}</td>
+                <td>
+                  {% if r.confidence >= 75 %}<span class="cbadge c-hi">{{ "%.0f"|format(r.confidence) }}</span>
+                  {% elif r.confidence >= 50 %}<span class="cbadge c-mi">{{ "%.0f"|format(r.confidence) }}</span>
+                  {% else %}<span class="cbadge c-lo">{{ "%.0f"|format(r.confidence) }}</span>{% endif %}
+                </td>
+                <td class="l">{{ r.top_horse_no }} {{ r.top_name }}</td>
                 <td>{{ "%.1f%%"|format(r.top3) }}</td>
                 <td>¥{{ "{:,}".format(r.total_bet) }}</td>
                 <td>{{ r.tickets }}</td>
               </tr>
-            {% else %}
-              <tr><td colspan="7" class="left">この日のレースを取得できませんでした。</td></tr>
-            {% endfor %}
+            {% else %}<tr><td colspan="7" class="l" style="color:var(--muted)">この日のレースを取得できませんでした。</td></tr>{% endfor %}
             </tbody>
           </table>
-          {% for note in day_result.notices %}
-            <div class="notice">{{ note }}</div>
-          {% endfor %}
-          {% for e in day_result.errors %}
-            <div class="warning">{{ e.race_id }}: {{ e.message }}</div>
-          {% endfor %}
         </div>
+      </div>
 
-        <div class="body" id="day-race-details">
-          {% for r in day_result.races %}
-            <details id="race-{{ r.race_id }}" open
-                     data-race-item
-                     data-sort-race="{{ loop.index0 }}"
-                     data-sort-confidence="{{ "%.6f"|format(r.confidence) }}"
-                     data-sort-expected-roi="{{ "%.6f"|format(r.expected_roi) }}">
-              <summary>
-                <span>{{ r.venue }} {{ "%.0f"|format(r.round_no) }}R</span>
-                <span>{{ r.title }}</span>
-                <span>自信度 {{ "%.1f"|format(r.confidence) }}</span>
-                <span>{{ r.top_horse_no }} {{ r.top_name }}</span>
-                <span>¥{{ "{:,}".format(r.total_bet) }}</span>
-              </summary>
-              <div class="summary-small">{{ r.course }} / {{ r.payload.allocation }}</div>
-              <div class="split" style="padding-left:0;padding-right:0">
-                <div>
-                  <table>
-                    <caption style="caption-side:top;text-align:left;font-weight:700;padding:0 0 8px">予想順位（全{{ r.payload.prediction_rows|length }}頭）</caption>
-                    <thead><tr><th>順位</th><th>馬番</th><th class="left">馬名</th><th>1着率</th><th>3着内率</th><th>オッズ</th><th>人気</th></tr></thead>
-                    <tbody>
-                    {% for row in r.payload.prediction_rows %}
-                      <tr>
-                        <td>{{ row.rank }}</td>
-                        <td>{{ row.horse_no }}</td>
-                        <td class="left">{{ row.name }}</td>
-                        <td>{{ "%.1f%%"|format(row.p_win) }}</td>
-                        <td>{{ "%.1f%%"|format(row.p_top3) }}</td>
-                        <td>
-                          {% if row.odds %}
-                            {{ "%.1f"|format(row.odds) }}{% if row.odds_source %}<br><small>{{ row.odds_source }}</small>{% endif %}
-                          {% else %}-{% endif %}
-                        </td>
-                        <td>{% if row.popularity %}{{ row.popularity }}{% else %}-{% endif %}</td>
-                      </tr>
-                    {% endfor %}
-                    </tbody>
-                  </table>
-                </div>
-                <div>
-                  <table>
-                    <thead><tr><th class="left">券種</th><th class="left">買い目</th><th>金額</th><th>的中率</th><th>推定オッズ</th><th>EV</th></tr></thead>
-                    <tbody>
-                    {% for b in r.payload.bets %}
-                      <tr>
-                        <td class="left">{{ b.type }}</td>
-                        <td class="left">{{ b.name }}</td>
-                        <td>¥{{ "{:,}".format(b.bet) }}</td>
-                        <td>{{ "%.1f%%"|format(b.p_hit) }}</td>
-                        <td>{{ "%.1f"|format(b.odds_est) }}</td>
-                        <td>{{ "%.2f"|format(b.ev) }}</td>
-                      </tr>
-                    {% else %}
-                      <tr><td colspan="6" class="left">条件に合う買い目がありません。</td></tr>
-                    {% endfor %}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              {% if r.payload.kelly_bets %}
-              <div style="border-top:1px solid var(--line);padding-top:10px;margin-top:2px">
-                <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:var(--accent)">
-                  Kelly AI 推薦馬券（資金{{ "{:,}".format(budget) }}円・EV+10%以上・馬連＋馬単）
-                </div>
+      <div id="day-race-details">
+        {% for r in day_result.races %}
+        <div class="rcard" id="race-{{ r.race_id }}"
+             data-race-item data-sort-race="{{ loop.index0 }}"
+             data-sort-confidence="{{ "%.6f"|format(r.confidence) }}"
+             data-sort-expected-roi="{{ "%.6f"|format(r.expected_roi) }}">
+          <button class="rtoggle" onclick="toggleDetail(this)">
+            <div>
+              <div class="rv">{{ r.venue }} {{ "%.0f"|format(r.round_no) }}R</div>
+              <div class="rsub">{{ r.course }}</div>
+            </div>
+            <div>
+              <div style="font-weight:700;font-size:13px">{{ r.title }}</div>
+              <div class="rsub">{{ r.payload.allocation|truncate(48, true, "…") }}</div>
+            </div>
+            <div>
+              {% if r.confidence >= 75 %}<span class="cbadge c-hi">自信度 {{ "%.0f"|format(r.confidence) }}</span>
+              {% elif r.confidence >= 50 %}<span class="cbadge c-mi">自信度 {{ "%.0f"|format(r.confidence) }}</span>
+              {% else %}<span class="cbadge c-lo">自信度 {{ "%.0f"|format(r.confidence) }}</span>{% endif %}
+            </div>
+            <div>
+              <div style="font-weight:700;font-size:13px">{{ r.top_horse_no }} {{ r.top_name }}</div>
+              <div class="rsub">3着内 {{ "%.1f%%"|format(r.top3) }}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-weight:800">¥{{ "{:,}".format(r.total_bet) }}</div>
+              <div class="rsub">{{ r.tickets }}点</div>
+            </div>
+          </button>
+          <div class="rbody open">
+            <div class="rgrid">
+              <div class="rcol">
+                <div class="rcol-title">予想順位（全{{ r.payload.prediction_rows|length }}頭）</div>
                 <table>
-                  <thead>
-                    <tr>
-                      <th class="left">券種</th>
-                      <th class="left">馬番</th>
-                      <th>推定オッズ</th>
-                      <th>モデル確率</th>
-                      <th>EV</th>
-                      <th>Kelly</th>
-                      <th>推薦額</th>
-                    </tr>
-                  </thead>
+                  <thead><tr><th>順位</th><th>馬番</th><th class="l">馬名</th><th>1着率</th><th>3着内率</th><th>オッズ</th><th>人気</th></tr></thead>
                   <tbody>
-                  {% for b in r.payload.kelly_bets %}
+                  {% for row in r.payload.prediction_rows %}
                     <tr>
-                      <td class="left">{{ b.ticket_kind }}</td>
-                      <td class="left">{{ b.horses | join("-") }}</td>
-                      <td>{{ "%.1f"|format(b.market_odds) }}</td>
-                      <td>{{ "%.2f%%"|format(b.model_prob * 100) }}</td>
-                      <td style="color:var(--good);font-weight:700">{{ "+%.1f%%"|format(b.ev * 100) }}</td>
-                      <td>{{ "%.2f%%"|format(b.kelly * 100) }}</td>
-                      <td style="font-weight:700">¥{{ "{:,}".format(b.bet_amount) }}</td>
+                      <td>
+                        {% if row.rank == 1 %}<span class="rk rk1">1</span>
+                        {% elif row.rank == 2 %}<span class="rk rk2">2</span>
+                        {% elif row.rank == 3 %}<span class="rk rk3">3</span>
+                        {% else %}<span class="rk rkn">{{ row.rank }}</span>{% endif %}
+                      </td>
+                      <td style="font-weight:700">{{ row.horse_no }}</td>
+                      <td class="l">{{ row.name }}</td>
+                      <td>{{ "%.1f%%"|format(row.p_win) }}</td>
+                      <td>{{ "%.1f%%"|format(row.p_top3) }}</td>
+                      <td>{% if row.odds %}{{ "%.1f"|format(row.odds) }}{% if row.odds_source %}<br><span style="font-size:10px;color:var(--muted)">{{ row.odds_source }}</span>{% endif %}{% else %}—{% endif %}</td>
+                      <td>{% if row.popularity %}{{ row.popularity }}{% else %}—{% endif %}</td>
                     </tr>
                   {% endfor %}
                   </tbody>
                 </table>
               </div>
-              {% endif %}
-            </details>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="empty">
-          <div>
-            <strong>候補日を選ぶと、その日の全レースを予想します。</strong><br>
-            情報更新後、直近候補日の全レースを一覧で確認できます。
+              <div class="rcol">
+                <div class="rcol-title">推薦買い目</div>
+                <table>
+                  <thead><tr><th class="l">券種</th><th class="l">買い目</th><th>金額</th><th>的中率</th><th>EV</th></tr></thead>
+                  <tbody>
+                  {% for b in r.payload.bets %}
+                    <tr>
+                      <td class="l">
+                        <span class="pill {% if b.kind in ['tansho','fukusho'] %}pill-g{% elif b.kind in ['wide','umaren'] %}pill-b{% else %}pill-a{% endif %}" style="font-size:11px">{{ b.type }}</span>
+                      </td>
+                      <td class="l" style="font-weight:600">{{ b.name }}</td>
+                      <td style="font-weight:700">¥{{ "{:,}".format(b.bet) }}</td>
+                      <td>{{ "%.1f%%"|format(b.p_hit) }}</td>
+                      <td class="{% if b.ev >= 1.1 %}ev-g{% elif b.ev >= 1.0 %}ev-o{% else %}ev-b{% endif %}">{{ "%.2f"|format(b.ev) }}</td>
+                    </tr>
+                  {% else %}<tr><td colspan="5" class="l" style="color:var(--muted)">条件に合う買い目がありません。</td></tr>{% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% if r.payload.kelly_bets %}
+            <div class="kelly-sec">
+              <div class="kelly-title">Kelly AI 推薦馬券（EV+10%以上 / 馬連・馬単）</div>
+              <table>
+                <thead><tr><th class="l">券種</th><th class="l">馬番</th><th>推定オッズ</th><th>モデル確率</th><th>EV</th><th>Kelly</th><th>推薦額</th></tr></thead>
+                <tbody>
+                {% for b in r.payload.kelly_bets %}
+                  <tr>
+                    <td class="l">{{ b.ticket_kind }}</td>
+                    <td class="l">{{ b.horses | join("-") }}</td>
+                    <td>{{ "%.1f"|format(b.market_odds) }}</td>
+                    <td>{{ "%.2f%%"|format(b.model_prob * 100) }}</td>
+                    <td class="ev-g">{{ "+%.1f%%"|format(b.ev * 100) }}</td>
+                    <td>{{ "%.2f%%"|format(b.kelly * 100) }}</td>
+                    <td style="font-weight:700">¥{{ "{:,}".format(b.bet_amount) }}</td>
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% endif %}
+            <div class="alloc-desc">{{ r.payload.allocation }}</div>
           </div>
         </div>
+        {% endfor %}
+      </div>
+
+      {% else %}
+      <div class="empty">
+        <div class="empty-icon">🏇</div>
+        <div class="empty-title">予想を始めましょう</div>
+        <div class="empty-desc">左の「予想」タブから日付を選び<br>「この日の全レースを予想」を押してください。</div>
+      </div>
       {% endif %}
-    </section>
-  </main>
-  <div id="loading-cover" class="loading-cover">
-    <div class="loading-box">
-      <div id="loading-title" class="loading-title">処理中です</div>
-      <div id="loading-detail" class="loading-detail">しばらくお待ちください。</div>
-      <div class="loading-track"><div id="loading-fill" class="loading-fill"></div></div>
-      <div class="loading-time">
-        <div>経過 <span id="loading-elapsed">0秒</span></div>
-        <div>残り予想 <span id="loading-eta">計算中</span></div>
+
+    </main>
+  </div>
+
+  <div id="loading-cover" class="lcov">
+    <div class="lbox">
+      <div id="loading-title" class="ltitle">処理中です</div>
+      <div id="loading-detail" class="ldetail">しばらくお待ちください。</div>
+      <div class="ltrack"><div id="loading-fill" class="lfill"></div></div>
+      <div class="ltime">
+        <span>経過 <strong id="loading-elapsed">0秒</strong></span>
+        <span>残り予想 <strong id="loading-eta">計算中</strong></span>
       </div>
     </div>
   </div>
-  <script>
-    const autoForm = document.getElementById("auto-update-form");
-    const panel = document.getElementById("update-progress");
-    const statusEl = document.getElementById("update-status");
-    const barEl = document.getElementById("update-bar");
-    const countEl = document.getElementById("update-count");
-    const etaEl = document.getElementById("update-eta");
-    const phaseEl = document.getElementById("update-phase");
-    const logEl = document.getElementById("update-log");
-    const dayForm = document.getElementById("predict-day-form");
-    const dayPanel = document.getElementById("day-progress");
-    const dayStatusEl = document.getElementById("day-status");
-    const dayBarEl = document.getElementById("day-bar");
-    const dayCountEl = document.getElementById("day-count");
-    const dayEtaEl = document.getElementById("day-eta");
-    const dayPhaseEl = document.getElementById("day-phase");
-    const dayLogEl = document.getElementById("day-log");
-    const dayCancelBtn = document.getElementById("day-cancel");
-    const simForm = document.getElementById("simulate-form");
-    const simPanel = document.getElementById("sim-progress");
-    const simStatusEl = document.getElementById("sim-status");
-    const simBarEl = document.getElementById("sim-bar");
-    const simCountEl = document.getElementById("sim-count");
-    const simEtaEl = document.getElementById("sim-eta");
-    const simPhaseEl = document.getElementById("sim-phase");
-    const simLogEl = document.getElementById("sim-log");
-    const simCancelBtn = document.getElementById("sim-cancel");
-    const loadingCover = document.getElementById("loading-cover");
-    const loadingTitle = document.getElementById("loading-title");
-    const loadingDetail = document.getElementById("loading-detail");
-    const loadingElapsed = document.getElementById("loading-elapsed");
-    const loadingEta = document.getElementById("loading-eta");
-    const loadingFill = document.getElementById("loading-fill");
-    let loadingTimer = null;
-    let currentDayJobId = "";
-    let currentSimJobId = "";
-    const etaCachePrefix = "keibaEta:";
 
-    function isTerminalStatus(status) {
-      return status === "completed" || status === "failed" || status === "cancelled";
+  <script>
+    // ── Tab nav ──
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+      });
+    });
+
+    // ── Race accordion ──
+    function toggleDetail(btn) {
+      btn.nextElementSibling.classList.toggle("open");
     }
 
-    (function recordPreviousLoading() {
+    // ── Shared refs ──
+    const autoForm    = document.getElementById("auto-update-form");
+    const panel       = document.getElementById("update-progress");
+    const statusEl    = document.getElementById("update-status");
+    const barEl       = document.getElementById("update-bar");
+    const countEl     = document.getElementById("update-count");
+    const etaEl       = document.getElementById("update-eta");
+    const phaseEl     = document.getElementById("update-phase");
+    const logEl       = document.getElementById("update-log");
+    const dayForm     = document.getElementById("predict-day-form");
+    const dayPanel    = document.getElementById("day-progress");
+    const dayStatusEl = document.getElementById("day-status");
+    const dayBarEl    = document.getElementById("day-bar");
+    const dayCountEl  = document.getElementById("day-count");
+    const dayEtaEl    = document.getElementById("day-eta");
+    const dayPhaseEl  = document.getElementById("day-phase");
+    const dayLogEl    = document.getElementById("day-log");
+    const dayCancelBtn= document.getElementById("day-cancel");
+    const simForm     = document.getElementById("simulate-form");
+    const simPanel    = document.getElementById("sim-progress");
+    const simStatusEl = document.getElementById("sim-status");
+    const simBarEl    = document.getElementById("sim-bar");
+    const simCountEl  = document.getElementById("sim-count");
+    const simEtaEl    = document.getElementById("sim-eta");
+    const simPhaseEl  = document.getElementById("sim-phase");
+    const simLogEl    = document.getElementById("sim-log");
+    const simCancelBtn= document.getElementById("sim-cancel");
+    const loadingCover= document.getElementById("loading-cover");
+    const loadingTitle= document.getElementById("loading-title");
+    const loadingDetail=document.getElementById("loading-detail");
+    const loadingElapsed=document.getElementById("loading-elapsed");
+    const loadingEta  = document.getElementById("loading-eta");
+    const loadingFill = document.getElementById("loading-fill");
+    let loadingTimer = null, currentDayJobId = "", currentSimJobId = "";
+    const etaCachePrefix = "keibaEta:";
+
+    function isTerminal(s) { return s === "completed" || s === "failed" || s === "cancelled"; }
+
+    (function () {
       const raw = sessionStorage.getItem("keibaLoadingStart");
       if (!raw) return;
       sessionStorage.removeItem("keibaLoadingStart");
@@ -968,403 +703,226 @@
         const item = JSON.parse(raw);
         const elapsed = (Date.now() - Number(item.startedAt || 0)) / 1000;
         if (!item.key || elapsed < 2 || elapsed > 7200) return;
-        const storageKey = etaCachePrefix + item.key;
-        const previous = Number(localStorage.getItem(storageKey));
-        const next = Number.isFinite(previous) && previous > 0
-          ? previous * 0.55 + elapsed * 0.45
-          : elapsed;
-        localStorage.setItem(storageKey, String(Math.ceil(next)));
-      } catch (_) {
-        sessionStorage.removeItem("keibaLoadingStart");
-      }
+        const k = etaCachePrefix + item.key;
+        const prev = Number(localStorage.getItem(k));
+        localStorage.setItem(k, String(Math.ceil(Number.isFinite(prev) && prev > 0 ? prev * 0.55 + elapsed * 0.45 : elapsed)));
+      } catch (_) {}
     })();
 
-    function formatDuration(totalSeconds) {
-      const seconds = Math.max(0, Math.round(totalSeconds));
-      if (seconds < 60) return `${seconds}秒`;
-      const minutes = Math.floor(seconds / 60);
-      const rest = seconds % 60;
-      return rest ? `${minutes}分${rest}秒` : `${minutes}分`;
+    function fmt(s) {
+      s = Math.max(0, Math.round(s));
+      if (s < 60) return `${s}秒`;
+      const m = Math.floor(s / 60), r = s % 60;
+      return r ? `${m}分${r}秒` : `${m}分`;
     }
 
-    function daysBetween(startValue, endValue) {
-      const start = Date.parse(startValue || "");
-      const end = Date.parse(endValue || "");
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 180;
-      return Math.max(1, Math.round((end - start) / 86400000) + 1);
+    function daysBetween(a, b) {
+      const s = Date.parse(a || ""), e = Date.parse(b || "");
+      if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) return 180;
+      return Math.max(1, Math.round((e - s) / 86400000) + 1);
     }
 
-    function withObservedEstimate(key, estimate) {
-      const observed = Number(localStorage.getItem(etaCachePrefix + key));
-      const seconds = Number.isFinite(observed) && observed > 0
-        ? Math.max(estimate.seconds, observed * 1.15)
-        : estimate.seconds;
-      return { ...estimate, key, seconds };
+    function withObs(key, est) {
+      const obs = Number(localStorage.getItem(etaCachePrefix + key));
+      return { ...est, key, seconds: Number.isFinite(obs) && obs > 0 ? Math.max(est.seconds, obs * 1.15) : est.seconds };
     }
 
-    function estimateForForm(form) {
+    function estimateFor(form) {
       const action = form.getAttribute("action") || "";
       if (action.includes("predict-day")) {
         const force = Boolean(form.querySelector("input[name='force_update']")?.checked);
-        return withObservedEstimate(force ? "predict-day:force" : "predict-day:cached", {
-          seconds: force ? 150 : 55,
-          title: "全レースを予想中",
-          detail: force
-            ? "レース情報を取得し直してから、その日の全レースを予想しています。"
-            : "保存済みデータを使って、その日の全レースを予想しています。",
-        });
+        return withObs(force ? "predict-day:force" : "predict-day:cached", { seconds: force ? 150 : 55, title: "全レースを予想中", detail: force ? "レース情報を取得し直してから予想しています。" : "保存済みデータから予想しています。" });
       }
       if (action.includes("predict-race")) {
         const venue = form.querySelector("select[name='venue_code'] option:checked")?.textContent || "指定レース";
-        const roundNo = form.querySelector("input[name='round_no']")?.value || "";
-        return withObservedEstimate("predict-race", {
-          seconds: 35,
-          title: "指定レースを予想中",
-          detail: `${venue} ${roundNo}R の情報を取得して予想しています。`,
-        });
+        const rno   = form.querySelector("input[name='round_no']")?.value || "";
+        return withObs("predict-race", { seconds: 35, title: "指定レースを予想中", detail: `${venue} ${rno}R を取得して予想しています。` });
       }
       if (action.includes("simulate")) {
-        const days = daysBetween(
-          form.querySelector("input[name='sim_start']")?.value,
-          form.querySelector("input[name='sim_end']")?.value,
-        );
-        const dayBucket = Math.ceil(days / 30) * 30;
-        const seconds = Math.min(2400, Math.max(120, 45 + days * 1.35));
-        return withObservedEstimate(`simulate:${dayBucket}`, {
-          seconds,
-          title: "シミュレーション中",
-          detail: `${days}日分のレースを検証しています。期間が長いほど時間がかかります。`,
-        });
+        const days = daysBetween(form.querySelector("input[name='sim_start']")?.value, form.querySelector("input[name='sim_end']")?.value);
+        return withObs(`simulate:${Math.ceil(days/30)*30}`, { seconds: Math.min(2400, Math.max(120, 45 + days * 1.35)), title: "シミュレーション中", detail: `${days}日分を検証しています。` });
       }
-      return withObservedEstimate("generic", { seconds: 90, title: "処理中です", detail: "しばらくお待ちください。" });
+      return withObs("generic", { seconds: 90, title: "処理中です", detail: "しばらくお待ちください。" });
     }
 
     function startLoading(form) {
-      const estimate = estimateForForm(form);
-      const startedAt = Date.now();
-      if (loadingTimer) window.clearInterval(loadingTimer);
-      loadingTitle.textContent = estimate.title;
-      loadingDetail.textContent = estimate.detail;
+      const est = estimateFor(form), startedAt = Date.now();
+      if (loadingTimer) clearInterval(loadingTimer);
+      loadingTitle.textContent = est.title;
+      loadingDetail.textContent = est.detail;
       loadingCover.classList.add("active");
-      sessionStorage.setItem("keibaLoadingStart", JSON.stringify({ key: estimate.key, startedAt }));
-
-      function updateLoading() {
+      sessionStorage.setItem("keibaLoadingStart", JSON.stringify({ key: est.key, startedAt }));
+      function tick() {
         const elapsed = Math.max(0, (Date.now() - startedAt) / 1000);
-        const plannedSeconds = Math.max(1, estimate.seconds);
-        const dynamicTotal = elapsed > plannedSeconds
-          ? Math.max(plannedSeconds, elapsed * 1.35)
-          : plannedSeconds;
-        const remaining = Math.max(0, dynamicTotal - elapsed);
-        const percent = Math.min(95, Math.max(5, elapsed / dynamicTotal * 100));
-        loadingElapsed.textContent = formatDuration(elapsed);
-        loadingEta.textContent = elapsed > plannedSeconds
-          ? `再計算中 約${formatDuration(remaining)}`
-          : `約${formatDuration(remaining)}`;
-        loadingFill.style.width = `${percent.toFixed(1)}%`;
+        const total = elapsed > est.seconds ? Math.max(est.seconds, elapsed * 1.35) : est.seconds;
+        const rem = Math.max(0, total - elapsed);
+        const pct = Math.min(95, Math.max(5, elapsed / total * 100));
+        loadingElapsed.textContent = fmt(elapsed);
+        loadingEta.textContent = elapsed > est.seconds ? `再計算中 約${fmt(rem)}` : `約${fmt(rem)}`;
+        loadingFill.style.width = `${pct.toFixed(1)}%`;
       }
-
-      updateLoading();
-      loadingTimer = window.setInterval(updateLoading, 1000);
+      tick(); loadingTimer = setInterval(tick, 1000);
     }
 
-    function setProgress(data) {
+    // ── Update job ──
+    function setProgress(d) {
       panel.classList.add("active");
-      const percent = Math.max(0, Math.min(100, Number(data.percent || 0)));
-      barEl.style.width = percent.toFixed(1) + "%";
-      statusEl.textContent = data.status === "completed" ? "更新完了" :
-        data.status === "failed" ? "更新失敗" : "更新中";
-      countEl.textContent = `${data.current || 0} / ${data.total || 0}`;
-      etaEl.textContent = data.eta_label || "計算中";
-      phaseEl.textContent = data.phase || "-";
-      logEl.textContent = data.message || "";
-      if (data.summary) {
-        logEl.textContent =
-          `検索 ${data.summary.scanned_dates}日 / 発見 ${data.summary.discovered_races}R / ` +
-          `既存 ${data.summary.skipped_existing}R / 更新 ${data.summary.updated}R / 失敗 ${data.summary.failed}R` +
-          (data.summary.lookup_updated ? " / lookup更新済み" : "");
-      }
+      barEl.style.width = Math.min(100, Math.max(0, Number(d.percent || 0))).toFixed(1) + "%";
+      statusEl.textContent = d.status === "completed" ? "更新完了" : d.status === "failed" ? "更新失敗" : "更新中";
+      countEl.textContent = `${d.current || 0} / ${d.total || 0}`;
+      etaEl.textContent = d.eta_label || "計算中";
+      phaseEl.textContent = d.phase || "-";
+      logEl.textContent = d.message || "";
+      if (d.summary) logEl.textContent = `検索 ${d.summary.scanned_dates}日 / 発見 ${d.summary.discovered_races}R / 既存 ${d.summary.skipped_existing}R / 更新 ${d.summary.updated}R / 失敗 ${d.summary.failed}R` + (d.summary.lookup_updated ? " / lookup更新済み" : "");
     }
-
-    async function pollUpdate(jobId) {
-      const res = await fetch(`/api/update/status/${jobId}`);
-      const data = await res.json();
-      setProgress(data);
-      if (data.status === "completed" || data.status === "failed") {
-        return;
-      }
-      window.setTimeout(() => pollUpdate(jobId), 1000);
+    async function pollUpdate(id) {
+      const r = await fetch(`/api/update/status/${id}`), d = await r.json();
+      setProgress(d);
+      if (d.status !== "completed" && d.status !== "failed") setTimeout(() => pollUpdate(id), 1000);
     }
-
     if (autoForm) {
-      autoForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
+      autoForm.addEventListener("submit", async e => {
+        e.preventDefault();
         panel.classList.add("active");
-        statusEl.textContent = "更新ジョブ開始中";
-        barEl.style.width = "0%";
-        countEl.textContent = "0 / 0";
-        etaEl.textContent = "計算中";
-        phaseEl.textContent = "queued";
-        logEl.textContent = "日付検索からスクレイピング更新まで自動で実行します。";
-        const formData = new FormData(autoForm);
+        statusEl.textContent = "更新ジョブ開始中"; barEl.style.width = "0%"; countEl.textContent = "0 / 0"; etaEl.textContent = "計算中"; phaseEl.textContent = "queued"; logEl.textContent = "日付検索からスクレイピング更新まで自動実行します。";
         try {
-          const res = await fetch("/api/update/start", { method: "POST", body: formData });
-          const data = await res.json();
-          pollUpdate(data.job_id);
-        } catch (err) {
-          setProgress({ status: "failed", phase: "error", percent: 100, current: 1, total: 1, eta_label: "停止", message: String(err) });
-        }
+          const r = await fetch("/api/update/start", { method: "POST", body: new FormData(autoForm) });
+          const d = await r.json();
+          document.querySelector('[data-tab="update"]').click();
+          pollUpdate(d.job_id);
+        } catch (err) { setProgress({ status: "failed", phase: "error", percent: 100, current: 1, total: 1, eta_label: "停止", message: String(err) }); }
       });
     }
 
-    function setDayProgress(data) {
+    // ── Predict day job ──
+    function setDayProgress(d) {
       dayPanel.classList.add("active");
-      const percent = Math.max(0, Math.min(100, Number(data.percent || 0)));
-      dayBarEl.style.width = percent.toFixed(1) + "%";
-      dayStatusEl.textContent = data.status === "completed" ? "未来予想完了" :
-        data.status === "failed" ? "未来予想失敗" :
-        data.status === "cancelled" ? "未来予想停止" :
-        data.status === "cancelling" ? "停止中" : "未来予想中";
-      dayCountEl.textContent = `${data.current || 0} / ${data.total || 0}`;
-      dayEtaEl.textContent = data.eta_label || "計算中";
-      dayPhaseEl.textContent = data.phase || "-";
-      dayLogEl.textContent = data.message || "";
-      if (dayCancelBtn) {
-        dayCancelBtn.disabled = isTerminalStatus(data.status) || data.status === "cancelling";
-      }
-      if (data.summary) {
-        dayLogEl.textContent =
-          `${data.summary.date || ""} / 予想 ${data.summary.races || 0}R / ` +
-          `エラー ${data.summary.errors || 0}R / 最高自信度 ${Number(data.summary.top_confidence || 0).toFixed(1)}`;
-      }
+      dayBarEl.style.width = Math.min(100, Math.max(0, Number(d.percent || 0))).toFixed(1) + "%";
+      dayStatusEl.textContent = d.status === "completed" ? "予想完了" : d.status === "failed" ? "予想失敗" : d.status === "cancelled" ? "予想停止" : d.status === "cancelling" ? "停止中" : "予想中";
+      dayCountEl.textContent = `${d.current || 0} / ${d.total || 0}`;
+      dayEtaEl.textContent = d.eta_label || "計算中";
+      dayPhaseEl.textContent = d.phase || "-";
+      dayLogEl.textContent = d.message || "";
+      if (dayCancelBtn) dayCancelBtn.disabled = isTerminal(d.status) || d.status === "cancelling";
+      if (d.summary) dayLogEl.textContent = `${d.summary.date || ""} / 予想 ${d.summary.races || 0}R / エラー ${d.summary.errors || 0}R / 最高自信度 ${Number(d.summary.top_confidence || 0).toFixed(1)}`;
     }
-
-    async function pollPredictDay(jobId) {
-      const res = await fetch(`/api/predict-day/status/${jobId}`);
-      const data = await res.json();
-      setDayProgress(data);
-      if (data.status === "completed") {
-        currentDayJobId = "";
-        window.setTimeout(() => {
-          window.location.href = `/predict-day/result/${jobId}`;
-        }, 500);
-        return;
-      }
-      if (data.status === "failed" || data.status === "cancelled") {
-        currentDayJobId = "";
-        return;
-      }
-      window.setTimeout(() => pollPredictDay(jobId), 1000);
+    async function pollPredictDay(id) {
+      const r = await fetch(`/api/predict-day/status/${id}`), d = await r.json();
+      setDayProgress(d);
+      if (d.status === "completed") { currentDayJobId = ""; setTimeout(() => { location.href = `/predict-day/result/${id}`; }, 500); return; }
+      if (d.status === "failed" || d.status === "cancelled") { currentDayJobId = ""; return; }
+      setTimeout(() => pollPredictDay(id), 1000);
     }
-
     if (dayForm) {
-      dayForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
+      dayForm.addEventListener("submit", async e => {
+        e.preventDefault();
         dayPanel.classList.add("active");
-        dayStatusEl.textContent = "未来予想ジョブ開始中";
-        dayBarEl.style.width = "0%";
-        dayCountEl.textContent = "0 / 0";
-        dayEtaEl.textContent = "計算中";
-        dayPhaseEl.textContent = "queued";
-        dayLogEl.textContent = "開催レース検索から各レース予想まで、実測速度で残り時間を更新します。";
+        dayStatusEl.textContent = "予想ジョブ開始中"; dayBarEl.style.width = "0%"; dayCountEl.textContent = "0 / 0"; dayEtaEl.textContent = "計算中"; dayPhaseEl.textContent = "queued"; dayLogEl.textContent = "開催レース検索から各レース予想まで実行します。";
         if (dayCancelBtn) dayCancelBtn.disabled = true;
-        const formData = new FormData(dayForm);
         try {
-          const res = await fetch("/api/predict-day/start", { method: "POST", body: formData });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.message || "未来予想を開始できませんでした");
-          currentDayJobId = data.job_id;
+          const r = await fetch("/api/predict-day/start", { method: "POST", body: new FormData(dayForm) });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.message || "予想を開始できませんでした");
+          currentDayJobId = d.job_id;
           if (dayCancelBtn) dayCancelBtn.disabled = false;
-          pollPredictDay(data.job_id);
-        } catch (err) {
-          currentDayJobId = "";
-          setDayProgress({ status: "failed", phase: "error", percent: 100, current: 1, total: 1, eta_label: "停止", message: String(err) });
-        }
+          pollPredictDay(d.job_id);
+        } catch (err) { currentDayJobId = ""; setDayProgress({ status: "failed", phase: "error", percent: 100, current: 1, total: 1, eta_label: "停止", message: String(err) }); }
       });
     }
-
     if (dayCancelBtn) {
       dayCancelBtn.addEventListener("click", async () => {
         if (!currentDayJobId) return;
-        dayCancelBtn.disabled = true;
-        dayStatusEl.textContent = "停止要求中";
-        dayEtaEl.textContent = "停止中";
-        dayLogEl.textContent = "処理中のレースが終わり次第停止します。";
-        try {
-          const res = await fetch(`/api/predict-day/cancel/${currentDayJobId}`, { method: "POST" });
-          const data = await res.json();
-          setDayProgress(data);
-        } catch (err) {
-          dayLogEl.textContent = String(err);
-        }
+        dayCancelBtn.disabled = true; dayStatusEl.textContent = "停止要求中"; dayEtaEl.textContent = "停止中"; dayLogEl.textContent = "処理中のレースが終わり次第停止します。";
+        try { const r = await fetch(`/api/predict-day/cancel/${currentDayJobId}`, { method: "POST" }); setDayProgress(await r.json()); } catch (err) { dayLogEl.textContent = String(err); }
       });
     }
 
-    function setSimProgress(data) {
+    // ── Simulate job ──
+    function setSimProgress(d) {
       simPanel.classList.add("active");
-      const percent = Math.max(0, Math.min(100, Number(data.percent || 0)));
-      simBarEl.style.width = percent.toFixed(1) + "%";
-      simStatusEl.textContent = data.status === "completed" ? "シミュレーション完了" :
-        data.status === "failed" ? "シミュレーション失敗" :
-        data.status === "cancelled" ? "シミュレーション停止" :
-        data.status === "cancelling" ? "停止中" : "シミュレーション中";
-      simCountEl.textContent = `${data.current || 0} / ${data.total || 0}`;
-      simEtaEl.textContent = data.eta_label || "計算中";
-      simPhaseEl.textContent = data.phase || "-";
-      simLogEl.textContent = data.message || "";
-      if (simCancelBtn) {
-        simCancelBtn.disabled = isTerminalStatus(data.status) || data.status === "cancelling";
-      }
-      if (data.summary) {
-        simLogEl.textContent =
-          `検証 ${data.summary.tested || 0}R / 購入 ${data.summary.bought || 0}R / ` +
-          `実払戻 ${data.summary.actual_payout_races || 0}R / ` +
-          `回収率 ${Number(data.summary.roi || 0).toFixed(1)}% / 収支 ${Number(data.summary.profit || 0).toLocaleString()}円`;
-      }
+      simBarEl.style.width = Math.min(100, Math.max(0, Number(d.percent || 0))).toFixed(1) + "%";
+      simStatusEl.textContent = d.status === "completed" ? "シミュ完了" : d.status === "failed" ? "シミュ失敗" : d.status === "cancelled" ? "シミュ停止" : d.status === "cancelling" ? "停止中" : "シミュ中";
+      simCountEl.textContent = `${d.current || 0} / ${d.total || 0}`;
+      simEtaEl.textContent = d.eta_label || "計算中";
+      simPhaseEl.textContent = d.phase || "-";
+      simLogEl.textContent = d.message || "";
+      if (simCancelBtn) simCancelBtn.disabled = isTerminal(d.status) || d.status === "cancelling";
+      if (d.summary) simLogEl.textContent = `検証 ${d.summary.tested || 0}R / 購入 ${d.summary.bought || 0}R / 実払戻 ${d.summary.actual_payout_races || 0}R / ROI ${Number(d.summary.roi || 0).toFixed(1)}% / 収支 ${Number(d.summary.profit || 0).toLocaleString()}円`;
     }
-
-    async function pollSimulation(jobId) {
-      const res = await fetch(`/api/simulate/status/${jobId}`);
-      const data = await res.json();
-      setSimProgress(data);
-      if (data.status === "completed") {
-        currentSimJobId = "";
-        window.setTimeout(() => {
-          window.location.href = `/simulate/result/${jobId}`;
-        }, 700);
-        return;
-      }
-      if (data.status === "failed" || data.status === "cancelled") {
-        currentSimJobId = "";
-        return;
-      }
-      window.setTimeout(() => pollSimulation(jobId), 1000);
+    async function pollSimulation(id) {
+      const r = await fetch(`/api/simulate/status/${id}`), d = await r.json();
+      setSimProgress(d);
+      if (d.status === "completed") { currentSimJobId = ""; setTimeout(() => { location.href = `/simulate/result/${id}`; }, 700); return; }
+      if (d.status === "failed" || d.status === "cancelled") { currentSimJobId = ""; return; }
+      setTimeout(() => pollSimulation(id), 1000);
     }
-
     if (simForm) {
-      simForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
+      simForm.addEventListener("submit", async e => {
+        e.preventDefault();
         simPanel.classList.add("active");
-        simStatusEl.textContent = "シミュレーションジョブ開始中";
-        simBarEl.style.width = "0%";
-        simCountEl.textContent = "0 / 0";
-        simEtaEl.textContent = "計算中";
-        simPhaseEl.textContent = "queued";
-        simLogEl.textContent = "実測速度を見ながら残り時間を更新します。";
+        simStatusEl.textContent = "シミュジョブ開始中"; simBarEl.style.width = "0%"; simCountEl.textContent = "0 / 0"; simEtaEl.textContent = "計算中"; simPhaseEl.textContent = "queued"; simLogEl.textContent = "実測速度で残り時間を更新します。";
         if (simCancelBtn) simCancelBtn.disabled = true;
-        const formData = new FormData(simForm);
         try {
-          const res = await fetch("/api/simulate/start", { method: "POST", body: formData });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.message || "シミュレーションを開始できませんでした");
-          currentSimJobId = data.job_id;
+          const r = await fetch("/api/simulate/start", { method: "POST", body: new FormData(simForm) });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.message || "シミュレーションを開始できませんでした");
+          currentSimJobId = d.job_id;
           if (simCancelBtn) simCancelBtn.disabled = false;
-          pollSimulation(data.job_id);
-        } catch (err) {
-          currentSimJobId = "";
-          setSimProgress({ status: "failed", phase: "error", percent: 100, current: 1, total: 1, eta_label: "停止", message: String(err) });
-        }
+          pollSimulation(d.job_id);
+        } catch (err) { currentSimJobId = ""; setSimProgress({ status: "failed", phase: "error", percent: 100, current: 1, total: 1, eta_label: "停止", message: String(err) }); }
       });
     }
-
     if (simCancelBtn) {
       simCancelBtn.addEventListener("click", async () => {
         if (!currentSimJobId) return;
-        simCancelBtn.disabled = true;
-        simStatusEl.textContent = "停止要求中";
-        simEtaEl.textContent = "停止中";
-        simLogEl.textContent = "処理中のレースが終わり次第停止します。";
-        try {
-          const res = await fetch(`/api/simulate/cancel/${currentSimJobId}`, { method: "POST" });
-          const data = await res.json();
-          setSimProgress(data);
-        } catch (err) {
-          simLogEl.textContent = String(err);
-        }
+        simCancelBtn.disabled = true; simStatusEl.textContent = "停止要求中"; simEtaEl.textContent = "停止中"; simLogEl.textContent = "処理中のレースが終わり次第停止します。";
+        try { const r = await fetch(`/api/simulate/cancel/${currentSimJobId}`, { method: "POST" }); setSimProgress(await r.json()); } catch (err) { simLogEl.textContent = String(err); }
       });
     }
 
-    document.querySelectorAll("form.blocking-form").forEach((form) => {
-      form.addEventListener("submit", () => {
-        startLoading(form);
-      });
-    });
+    document.querySelectorAll("form.blocking-form").forEach(f => f.addEventListener("submit", () => startLoading(f)));
 
+    // ── Sort ──
     const instantSort = document.getElementById("instant-sort");
     const instantSortLabel = document.getElementById("instant-sort-label");
-    const sortLabels = {
-      race: "開催順",
-      confidence: "自信度順",
-      expected_roi: "期待ROI順",
-    };
-
+    const sortLabels = { race: "開催順", confidence: "自信度順", expected_roi: "期待ROI順" };
     function sortChildren(container, selector, mode) {
       if (!container) return;
       const items = Array.from(container.querySelectorAll(selector));
       items.sort((a, b) => {
-        const av = Number(a.dataset[`sort${mode.replace(/(^|_)([a-z])/g, (_, p, c) => c.toUpperCase())}`] || 0);
-        const bv = Number(b.dataset[`sort${mode.replace(/(^|_)([a-z])/g, (_, p, c) => c.toUpperCase())}`] || 0);
+        const key = "sort" + mode.replace(/(^|_)([a-z])/g, (_, p, c) => c.toUpperCase());
+        const av = Number(a.dataset[key] || 0), bv = Number(b.dataset[key] || 0);
         return mode === "race" ? av - bv : bv - av;
       });
-      items.forEach((item) => container.appendChild(item));
+      items.forEach(i => container.appendChild(i));
     }
-
     if (instantSort) {
       instantSort.addEventListener("change", () => {
         const mode = instantSort.value;
         sortChildren(document.getElementById("day-race-tbody"), "tr[data-race-item]", mode);
-        sortChildren(document.getElementById("day-race-details"), "details[data-race-item]", mode);
+        sortChildren(document.getElementById("day-race-details"), "div[data-race-item]", mode);
         if (instantSortLabel) instantSortLabel.textContent = sortLabels[mode] || mode;
       });
     }
 
-    function isActuallyEllipsized(el) {
-      if (!el || !(el instanceof HTMLElement)) return false;
-      const style = window.getComputedStyle(el);
-      if (style.textOverflow !== "ellipsis") return false;
-      return el.scrollWidth > el.clientWidth + 1;
+    // ── Tooltip ──
+    function isEllipsized(el) {
+      if (!el) return false;
+      return window.getComputedStyle(el).textOverflow === "ellipsis" && el.scrollWidth > el.clientWidth + 1;
     }
-
-    function setFullTextTooltip(el, enabled, text = "") {
-      if (enabled) {
-        el.setAttribute("title", text);
-        el.dataset.full = text;
-        el.classList.add("full-tooltip");
-      } else {
-        el.removeAttribute("title");
-        delete el.dataset.full;
-        el.classList.remove("full-tooltip");
-      }
+    function setTip(el, on, text) {
+      if (on) { el.setAttribute("title", text); el.dataset.full = text; el.classList.add("full-tooltip"); }
+      else { el.removeAttribute("title"); delete el.dataset.full; el.classList.remove("full-tooltip"); }
     }
-
-    function enableFullTextOnHover(root = document) {
-      const selector = [
-        "th",
-        "td",
-        "summary span",
-        ".summary-small",
-        ".metric .name",
-        ".metric .value",
-        ".pill",
-        ".cached-list li",
-        ".notice",
-        ".warning",
-        ".progress-log"
-      ].join(",");
-      root.querySelectorAll(selector).forEach((el) => {
+    function applyTooltips(root = document) {
+      root.querySelectorAll("th,td,.m-lbl,.m-val,.pill,.citem,.alert,.prog-log").forEach(el => {
         const text = (el.textContent || "").replace(/\s+/g, " ").trim();
-        if (!text || text === "-" || text.length < 2) {
-          setFullTextTooltip(el, false);
-          return;
-        }
-        setFullTextTooltip(el, isActuallyEllipsized(el), text);
+        setTip(el, text.length > 1 && text !== "-" && isEllipsized(el), text);
       });
     }
-
-    window.addEventListener("resize", () => enableFullTextOnHover());
-    if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(() => enableFullTextOnHover());
-    }
-    enableFullTextOnHover();
+    window.addEventListener("resize", () => applyTooltips());
+    if (document.fonts?.ready) document.fonts.ready.then(() => applyTooltips());
+    applyTooltips();
   </script>
 </body>
 </html>
